@@ -8,10 +8,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     
+    <!-- Three.js and AR.js libraries -->
     <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'></script>
     <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/loaders/OBJLoader.js'></script>
     <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/loaders/MTLLoader.js'></script>
+    
+    <!-- AR.js with jsartoolkit approach -->
     <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/three.js/build/ar-threex.js"></script>
+    
     <style>
         body {
             margin: 0;
@@ -78,14 +82,14 @@
             flex-shrink: 0;
         }
 
-        /* AR.js canvas will be placed here */
         .camera-container canvas {
             position: absolute;
             top: 0;
             left: 0;
-            width: 100% !important; /* Override AR.js inline style */
-            height: 100% !important; /* Override AR.js inline style */
+            width: 100% !important;
+            height: 100% !important;
             border-radius: 10px;
+            object-fit: cover;
         }
 
         .info-card {
@@ -169,6 +173,18 @@
             text-align: center;
         }
 
+        .debug-info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+
         /* Responsive adjustments */
         @media (max-width: 600px) {
             body {
@@ -189,18 +205,6 @@
                 margin-left: 20px;
                 margin-right: 20px;
             }
-        }
-
-        .debug-info {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.8);
-            color: white;
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 12px;
-            z-index: 1000;
         }
     </style>
 </head>
@@ -238,30 +242,25 @@
         var scene, camera, renderer, clock, deltaTime, totalTime;
         var arToolkitSource, arToolkitContext;
         var markerRoot1;
-        var customModel; // Your custom model from OBJ/MTL files
+        var customModel;
 
-        // Initialize with better error handling
+        // Get DOM elements
+        const cameraContainer = document.getElementById('cameraContainer');
+        const loadingMessage = document.getElementById('loadingMessage');
+        const debugInfo = document.getElementById('debugInfo');
+
         initialize();
         animate();
 
-        // Initialize everything with timeout fallback
-        let initTimeout;
-        
         function initialize() {
             debugInfo.textContent = 'Creating scene...';
-            
-            // Set timeout fallback - if AR doesn't work in 10 seconds, show camera request
-            initTimeout = setTimeout(() => {
-                debugInfo.textContent = 'AR timeout - requesting camera manually...';
-                requestCameraManually();
-            }, 10000);
             
             scene = new THREE.Scene();
 
             let ambientLight = new THREE.AmbientLight(0xcccccc, 1.0);
             scene.add(ambientLight);
 
-            camera = new THREE.Camera(); // AR.js will manage this camera's projection matrix
+            camera = new THREE.Camera();
             scene.add(camera);
 
             renderer = new THREE.WebGLRenderer({
@@ -269,7 +268,12 @@
                 alpha: true
             });
             renderer.setClearColor(new THREE.Color('lightgrey'), 0);
-            renderer.setSize(cameraContainer.clientWidth, cameraContainer.clientHeight);
+            
+            // Set size to match container
+            const containerWidth = cameraContainer.clientWidth;
+            const containerHeight = cameraContainer.clientHeight;
+            renderer.setSize(containerWidth, containerHeight);
+            
             renderer.domElement.style.position = 'absolute';
             renderer.domElement.style.top = '0px';
             renderer.domElement.style.left = '0px';
@@ -279,122 +283,104 @@
             deltaTime = 0;
             totalTime = 0;
 
-            debugInfo.textContent = 'Setting up AR source...';
+            setupARToolkit();
+        }
+
+        function setupARToolkit() {
+            debugInfo.textContent = 'Setting up AR Toolkit...';
 
             ////////////////////////////////////////////////////////////
-            // setup arToolkitSource with error handling
+            // setup arToolkitSource
             ////////////////////////////////////////////////////////////
+            arToolkitSource = new THREEx.ArToolkitSource({
+                sourceType: 'webcam',
+            });
 
-            try {
-                arToolkitSource = new THREEx.ArToolkitSource({
-                    sourceType: 'webcam',
-                    sourceWidth: cameraContainer.clientWidth,
-                    sourceHeight: cameraContainer.clientHeight
-                });
-
-                function onResize() {
-                    if (arToolkitSource) {
-                        arToolkitSource.onResize();
-                        arToolkitSource.copySizeTo(renderer.domElement);
-                        if (arToolkitContext && arToolkitContext.arController !== null) {
-                            arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
-                        }
-                    }
+            function onResize() {
+                arToolkitSource.onResize();
+                arToolkitSource.copySizeTo(renderer.domElement);
+                if (arToolkitContext.arController !== null) {
+                    arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
                 }
-
-                arToolkitSource.init(function onReady() {
-                    clearTimeout(initTimeout);
-                    debugInfo.textContent = 'Camera ready!';
-                    onResize();
-                    loadingMessage.textContent = 'Kamera siap! Mencari marker...';
-                    setupARContext();
-                }, function onError(error) {
-                    clearTimeout(initTimeout);
-                    debugInfo.textContent = 'Camera init failed: ' + error;
-                    console.error('AR Source init error:', error);
-                    requestCameraManually();
-                });
-
-                window.addEventListener('resize', onResize);
-
-            } catch (error) {
-                clearTimeout(initTimeout);
-                debugInfo.textContent = 'AR Source creation failed: ' + error;
-                console.error('AR Source creation error:', error);
-                requestCameraManually();
             }
+
+            arToolkitSource.init(function onReady() {
+                debugInfo.textContent = 'Camera ready!';
+                loadingMessage.textContent = 'Kamera siap! Mencari marker...';
+                onResize();
+                setupARContext();
+            });
+
+            // handle resize event
+            window.addEventListener('resize', function() {
+                onResize();
+            });
         }
 
         function setupARContext() {
-            debugInfo.textContent = 'Setting up AR context...';
+            debugInfo.textContent = 'Setting up AR Context...';
 
-            try {
-                // create atToolkitContext
-                arToolkitContext = new THREEx.ArToolkitContext({
-                    cameraParametersUrl: 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/data/data/camera_para.dat',
-                    detectionMode: 'mono'
-                });
+            ////////////////////////////////////////////////////////////
+            // setup arToolkitContext
+            ////////////////////////////////////////////////////////////
+            // create arToolkitContext
+            arToolkitContext = new THREEx.ArToolkitContext({
+                cameraParametersUrl: 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/data/data/camera_para.dat',
+                detectionMode: 'mono'
+            });
 
-                // copy projection matrix to camera when initialization complete
-                arToolkitContext.init(function onCompleted() {
-                    debugInfo.textContent = 'AR initialized successfully!';
-                    camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
-                    loadingMessage.style.display = 'none';
-                    setupMarkers();
-                }, function onError(error) {
-                    debugInfo.textContent = 'AR Context init failed: ' + error;
-                    console.error('AR Context init error:', error);
-                    // Still try to setup markers
-                    setupMarkers();
-                });
-
-            } catch (error) {
-                debugInfo.textContent = 'AR Context creation failed: ' + error;
-                console.error('AR Context creation error:', error);
+            // copy projection matrix to camera when initialization complete
+            arToolkitContext.init(function onCompleted() {
+                debugInfo.textContent = 'AR initialized successfully!';
+                camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+                loadingMessage.style.display = 'none';
                 setupMarkers();
-            }
+            });
         }
 
         function setupMarkers() {
             debugInfo.textContent = 'Setting up markers...';
 
-            try {
-                // build markerControls
-                markerRoot1 = new THREE.Group();
-                scene.add(markerRoot1);
-                
-                if (arToolkitContext) {
-                    let markerControls1 = new THREEx.ArMarkerControls(arToolkitContext, markerRoot1, {
-                        type: 'pattern', 
-                        patternUrl: "https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/data/data/patt.hiro",
-                        changeMatrixMode: 'cameraTransformMatrix'
-                    });
-                }
+            ////////////////////////////////////////////////////////////
+            // setup markerRoots
+            ////////////////////////////////////////////////////////////
+            // build markerControls
+            markerRoot1 = new THREE.Group();
+            scene.add(markerRoot1);
+            
+            let markerControls1 = new THREEx.ArMarkerControls(arToolkitContext, markerRoot1, {
+                type: 'pattern',
+                patternUrl: "https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/data/data/patt.hiro",
+            });
 
-                loadModels();
+            // Add marker plane for visualization
+            let geometry1 = new THREE.PlaneBufferGeometry(1, 1, 4, 4);
+            let material1 = new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.2, transparent: true });
+            let planeMesh = new THREE.Mesh(geometry1, material1);
+            planeMesh.rotation.x = -Math.PI / 2;
+            markerRoot1.add(planeMesh);
 
-            } catch (error) {
-                debugInfo.textContent = 'Marker setup failed: ' + error;
-                console.error('Marker setup error:', error);
-                loadModels();
-            }
+            loadModels();
         }
 
         function loadModels() {
-            // Load your 3D model
-            function onProgress(xhr) { 
+            debugInfo.textContent = 'Loading 3D model...';
+
+            function onProgress(xhr) {
                 if (xhr.lengthComputable) {
-                    console.log((xhr.loaded / xhr.total * 100) + '% loaded'); 
-                    debugInfo.textContent = 'Loading model: ' + Math.round(xhr.loaded / xhr.total * 100) + '%';
+                    const percentComplete = xhr.loaded / xhr.total * 100;
+                    console.log(percentComplete + '% loaded');
+                    debugInfo.textContent = 'Loading model: ' + Math.round(percentComplete) + '%';
                 }
             }
-            function onError(xhr) { 
-                console.error('Model loading error:', xhr); 
-                debugInfo.textContent = 'Error loading model - using fallback';
+
+            function onError(xhr) {
+                console.log('Model loading error:', xhr);
+                debugInfo.textContent = 'Model loading failed - using fallback';
                 createFallbackModel();
             }
 
-            // Try to load your custom model
+            // Load custom model
             new THREE.MTLLoader()
                 .setPath('models/')
                 .load('materials.mtl', function(materials) {
@@ -406,8 +392,8 @@
                             customModel = group.children[0];
                             if (customModel) {
                                 customModel.material.side = THREE.DoubleSide;
-                                customModel.position.set(0, 0.5, 0);
-                                customModel.scale.set(0.5, 0.5, 0.5);
+                                customModel.position.y = 0.25;
+                                customModel.scale.set(0.25, 0.25, 0.25);
                                 markerRoot1.add(customModel);
                                 debugInfo.textContent = 'Model loaded successfully!';
                             } else {
@@ -420,74 +406,45 @@
                     debugInfo.textContent = 'MTL loading failed - using fallback';
                     createFallbackModel();
                 });
-
-            // Add marker plane
-            let geometry1 = new THREE.PlaneBufferGeometry(1, 1, 4, 4);
-            let material1 = new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.2, transparent: true });
-            let planeMesh = new THREE.Mesh(geometry1, material1);
-            planeMesh.rotation.x = -Math.PI / 2;
-            markerRoot1.add(planeMesh);
         }
 
         function createFallbackModel() {
-            // Create a simple medical-themed fallback model
-            const geometry = new THREE.CylinderGeometry(0.1, 0.1, 1, 8);
-            const material = new THREE.MeshBasicMaterial({color: 0x2c5aa0});
-            customModel = new THREE.Mesh(geometry, material);
-            customModel.position.set(0, 0.5, 0);
-            markerRoot1.add(customModel);
-            debugInfo.textContent = 'Using fallback model';
-        }
-
-        function requestCameraManually() {
-            debugInfo.textContent = 'Requesting camera permission...';
+            // Create a simple medical-themed fallback model (stethoscope-like shape)
+            const group = new THREE.Group();
             
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then(function(stream) {
-                    debugInfo.textContent = 'Camera permission granted!';
-                    
-                    // Create video element to show camera
-                    const video = document.createElement('video');
-                    video.srcObject = stream;
-                    video.autoplay = true;
-                    video.playsInline = true;
-                    video.style.width = '100%';
-                    video.style.height = '100%';
-                    video.style.objectFit = 'cover';
-                    video.style.borderRadius = '10px';
-                    
-                    // Clear container and add video
-                    cameraContainer.innerHTML = '';
-                    cameraContainer.appendChild(video);
-                    
-                    // Add overlay info
-                    const overlay = document.createElement('div');
-                    overlay.innerHTML = 'Camera Active - AR mode ready';
-                    overlay.style.position = 'absolute';
-                    overlay.style.bottom = '10px';
-                    overlay.style.left = '50%';
-                    overlay.style.transform = 'translateX(-50%)';
-                    overlay.style.background = 'rgba(0,123,255,0.9)';
-                    overlay.style.color = 'white';
-                    overlay.style.padding = '8px 15px';
-                    overlay.style.borderRadius = '20px';
-                    overlay.style.fontSize = '12px';
-                    cameraContainer.appendChild(overlay);
-                    
-                })
-                .catch(function(error) {
-                    debugInfo.textContent = 'Camera permission denied: ' + error.message;
-                    console.error('Camera error:', error);
-                    
-                    // Show error message
-                    loadingMessage.innerHTML = `
-                        <div>❌ Camera tidak dapat diakses</div>
-                        <div style="font-size: 12px; margin-top: 5px;">
-                            Pastikan browser memiliki izin kamera
-                        </div>
-                    `;
-                    loadingMessage.style.display = 'block';
-                });
+            // Main tube
+            const tubeGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.6, 8);
+            const tubeMaterial = new THREE.MeshBasicMaterial({color: 0x2c5aa0});
+            const tube = new THREE.Mesh(tubeGeometry, tubeMaterial);
+            tube.position.set(0, 0.3, 0);
+            group.add(tube);
+            
+            // Chest piece
+            const chestGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.03, 16);
+            const chestMaterial = new THREE.MeshBasicMaterial({color: 0x1a365d});
+            const chestPiece = new THREE.Mesh(chestGeometry, chestMaterial);
+            chestPiece.position.set(0, 0, 0);
+            chestPiece.rotation.x = Math.PI / 2;
+            group.add(chestPiece);
+            
+            // Earpieces
+            const earGeometry = new THREE.SphereGeometry(0.03, 8, 8);
+            const earMaterial = new THREE.MeshBasicMaterial({color: 0x2c5aa0});
+            
+            const leftEar = new THREE.Mesh(earGeometry, earMaterial);
+            leftEar.position.set(-0.15, 0.6, 0);
+            group.add(leftEar);
+            
+            const rightEar = new THREE.Mesh(earGeometry, earMaterial);
+            rightEar.position.set(0.15, 0.6, 0);
+            group.add(rightEar);
+            
+            customModel = group;
+            customModel.position.y = 0.25;
+            customModel.scale.set(0.5, 0.5, 0.5);
+            markerRoot1.add(customModel);
+            
+            debugInfo.textContent = 'Using fallback stethoscope model';
         }
 
         function update() {
@@ -496,9 +453,9 @@
                 arToolkitContext.update(arToolkitSource.domElement);
             }
 
-            // Optional: Rotate your custom model for visual effect if you like
+            // Optional: Rotate your custom model for visual effect
             if (customModel && markerRoot1.visible) {
-                 customModel.rotation.y += 0.01;
+                customModel.rotation.y += 0.01;
             }
         }
 
@@ -525,13 +482,19 @@
 
         // Handle window resize for the camera container
         window.addEventListener('resize', () => {
-            if (renderer && camera) {
+            if (renderer && camera && arToolkitSource) {
                 const width = cameraContainer.clientWidth;
                 const height = cameraContainer.clientHeight;
                 renderer.setSize(width, height);
-                // The AR.js camera projection matrix is handled by arToolkitContext,
-                // so we don't need to manually update camera.aspect or projectionMatrix here.
-                onResize(); // Call AR.js's resize handler
+                
+                // Call AR.js's resize handler
+                if (arToolkitSource.onResize) {
+                    arToolkitSource.onResize();
+                    arToolkitSource.copySizeTo(renderer.domElement);
+                    if (arToolkitContext && arToolkitContext.arController !== null) {
+                        arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
+                    }
+                }
             }
         });
     </script>
