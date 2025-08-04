@@ -297,18 +297,26 @@
             });
 
             function onResize() {
-                arToolkitSource.onResize();
-                arToolkitSource.copySizeTo(renderer.domElement);
-                if (arToolkitContext.arController !== null) {
-                    arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
+                if (arToolkitSource && arToolkitSource.ready) {
+                    arToolkitSource.onResize();
+                    arToolkitSource.copySizeTo(renderer.domElement);
+                    if (arToolkitContext && arToolkitContext.arController !== null) {
+                        arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
+                    }
                 }
             }
 
             arToolkitSource.init(function onReady() {
                 debugInfo.textContent = 'Camera ready!';
                 loadingMessage.textContent = 'Kamera siap! Mencari marker...';
-                onResize();
-                setupARContext();
+                setTimeout(() => {
+                    onResize();
+                    setupARContext();
+                }, 100);
+            }, function onError(error) {
+                debugInfo.textContent = 'Camera init failed: ' + error;
+                console.error('AR Source init error:', error);
+                createFallbackModel();
             });
 
             // handle resize event
@@ -320,47 +328,65 @@
         function setupARContext() {
             debugInfo.textContent = 'Setting up AR Context...';
 
-            ////////////////////////////////////////////////////////////
-            // setup arToolkitContext
-            ////////////////////////////////////////////////////////////
-            // create arToolkitContext
-            arToolkitContext = new THREEx.ArToolkitContext({
-                cameraParametersUrl: 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/data/data/camera_para.dat',
-                detectionMode: 'mono'
-            });
+            try {
+                ////////////////////////////////////////////////////////////
+                // setup arToolkitContext
+                ////////////////////////////////////////////////////////////
+                // create arToolkitContext
+                arToolkitContext = new THREEx.ArToolkitContext({
+                    cameraParametersUrl: 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/data/data/camera_para.dat',
+                    detectionMode: 'mono'
+                });
 
-            // copy projection matrix to camera when initialization complete
-            arToolkitContext.init(function onCompleted() {
-                debugInfo.textContent = 'AR initialized successfully!';
-                camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
-                loadingMessage.style.display = 'none';
-                setupMarkers();
-            });
+                // copy projection matrix to camera when initialization complete
+                arToolkitContext.init(function onCompleted() {
+                    debugInfo.textContent = 'AR initialized successfully!';
+                    camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+                    loadingMessage.style.display = 'none';
+                    setupMarkers();
+                }, function onError(error) {
+                    debugInfo.textContent = 'AR Context init failed: ' + error;
+                    console.error('AR Context init error:', error);
+                    createFallbackModel();
+                });
+            } catch (error) {
+                debugInfo.textContent = 'AR Context creation failed: ' + error;
+                console.error('AR Context creation error:', error);
+                createFallbackModel();
+            }
         }
 
         function setupMarkers() {
             debugInfo.textContent = 'Setting up markers...';
 
-            ////////////////////////////////////////////////////////////
-            // setup markerRoots
-            ////////////////////////////////////////////////////////////
-            // build markerControls
-            markerRoot1 = new THREE.Group();
-            scene.add(markerRoot1);
-            
-            let markerControls1 = new THREEx.ArMarkerControls(arToolkitContext, markerRoot1, {
-                type: 'pattern',
-                patternUrl: "https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/data/data/patt.hiro",
-            });
+            try {
+                ////////////////////////////////////////////////////////////
+                // setup markerRoots
+                ////////////////////////////////////////////////////////////
+                // build markerControls
+                markerRoot1 = new THREE.Group();
+                scene.add(markerRoot1);
+                
+                if (arToolkitContext) {
+                    let markerControls1 = new THREEx.ArMarkerControls(arToolkitContext, markerRoot1, {
+                        type: 'pattern',
+                        patternUrl: "https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/data/data/patt.hiro",
+                    });
+                }
 
-            // Add marker plane for visualization
-            let geometry1 = new THREE.PlaneBufferGeometry(1, 1, 4, 4);
-            let material1 = new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.2, transparent: true });
-            let planeMesh = new THREE.Mesh(geometry1, material1);
-            planeMesh.rotation.x = -Math.PI / 2;
-            markerRoot1.add(planeMesh);
+                // Add marker plane for visualization
+                let geometry1 = new THREE.PlaneBufferGeometry(1, 1, 4, 4);
+                let material1 = new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.2, transparent: true });
+                let planeMesh = new THREE.Mesh(geometry1, material1);
+                planeMesh.rotation.x = -Math.PI / 2;
+                markerRoot1.add(planeMesh);
 
-            loadModels();
+                loadModels();
+            } catch (error) {
+                debugInfo.textContent = 'Marker setup failed: ' + error;
+                console.error('Marker setup error:', error);
+                createFallbackModel();
+            }
         }
 
         function loadModels() {
@@ -449,12 +475,16 @@
 
         function update() {
             // update artoolkit on every frame
-            if (arToolkitSource.ready !== false) {
-                arToolkitContext.update(arToolkitSource.domElement);
+            if (arToolkitSource && arToolkitSource.ready !== false && arToolkitContext) {
+                try {
+                    arToolkitContext.update(arToolkitSource.domElement);
+                } catch (error) {
+                    // Silent fail to avoid console spam
+                }
             }
 
             // Optional: Rotate your custom model for visual effect
-            if (customModel && markerRoot1.visible) {
+            if (customModel && markerRoot1 && markerRoot1.visible) {
                 customModel.rotation.y += 0.01;
             }
         }
@@ -482,17 +512,21 @@
 
         // Handle window resize for the camera container
         window.addEventListener('resize', () => {
-            if (renderer && camera && arToolkitSource) {
+            if (renderer && camera) {
                 const width = cameraContainer.clientWidth;
                 const height = cameraContainer.clientHeight;
                 renderer.setSize(width, height);
                 
-                // Call AR.js's resize handler
-                if (arToolkitSource.onResize) {
-                    arToolkitSource.onResize();
-                    arToolkitSource.copySizeTo(renderer.domElement);
-                    if (arToolkitContext && arToolkitContext.arController !== null) {
-                        arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
+                // Call AR.js's resize handler safely
+                if (arToolkitSource && arToolkitSource.onResize && arToolkitSource.ready) {
+                    try {
+                        arToolkitSource.onResize();
+                        arToolkitSource.copySizeTo(renderer.domElement);
+                        if (arToolkitContext && arToolkitContext.arController !== null) {
+                            arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
+                        }
+                    } catch (error) {
+                        console.warn('Resize error:', error);
                     }
                 }
             }
