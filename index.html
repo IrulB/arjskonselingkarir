@@ -303,9 +303,147 @@
     </div>
 
     <script>
-        // Demo 3D Scene (since AR.js external dependencies aren't available)
-        let scene, camera, renderer, cube, isMouseDown = false;
+        // Enhanced AR.js Implementation with fallback
+        var scene, camera, renderer, clock, deltaTime, totalTime;
+        var arToolkitSource, arToolkitContext;
+        var markerRoot1;
+        var customModel;
+        var isARSupported = false;
+        let cube, isMouseDown = false;
         let mouseX = 0, mouseY = 0;
+
+        const cameraContainer = document.getElementById('cameraContainer');
+        const loadingMessage = document.getElementById('loadingMessage');
+
+        // Try to initialize AR, fallback to 3D demo if AR fails
+        try {
+            if (typeof THREEx !== 'undefined') {
+                initializeAR();
+            } else {
+                console.log('AR.js not available, falling back to 3D demo');
+                setTimeout(() => {
+                    loadingMessage.style.display = 'none';
+                    initDemo3D();
+                }, 1000);
+            }
+        } catch (error) {
+            console.log('AR initialization failed, using 3D demo:', error);
+            setTimeout(() => {
+                loadingMessage.style.display = 'none';
+                initDemo3D();
+            }, 1000);
+        }
+
+        function initializeAR() {
+            loadingMessage.style.display = 'block';
+            loadingMessage.textContent = 'Menginisialisasi AR...';
+            
+            scene = new THREE.Scene();
+
+            let ambientLight = new THREE.AmbientLight(0xcccccc, 1.0);
+            scene.add(ambientLight);
+
+            camera = new THREE.Camera();
+            scene.add(camera);
+
+            renderer = new THREE.WebGLRenderer({
+                antialias: true,
+                alpha: true
+            });
+            renderer.setClearColor(new THREE.Color('lightgrey'), 0);
+            renderer.setSize(cameraContainer.clientWidth, cameraContainer.clientHeight);
+            renderer.domElement.style.position = 'absolute';
+            renderer.domElement.style.top = '0px';
+            renderer.domElement.style.left = '0px';
+            cameraContainer.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+            deltaTime = 0;
+            totalTime = 0;
+
+            // Setup arToolkitSource
+            arToolkitSource = new THREEx.ArToolkitSource({
+                sourceType: 'webcam',
+                sourceWidth: cameraContainer.clientWidth,
+                sourceHeight: cameraContainer.clientHeight
+            });
+
+            function onResize() {
+                arToolkitSource.onResize();
+                arToolkitSource.copySizeTo(renderer.domElement);
+                if (arToolkitContext.arController !== null) {
+                    arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
+                }
+            }
+
+            arToolkitSource.init(function onReady() {
+                onResize();
+                loadingMessage.textContent = 'Kamera siap! Mencari marker...';
+                isARSupported = true;
+            });
+
+            window.addEventListener('resize', function() {
+                onResize();
+            });
+
+            // Setup arToolkitContext
+            arToolkitContext = new THREEx.ArToolkitContext({
+                cameraParametersUrl: 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/data/data/camera_para.dat',
+                detectionMode: 'mono'
+            });
+
+            arToolkitContext.init(function onCompleted() {
+                camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+                loadingMessage.style.display = 'none';
+            });
+
+            // Setup markerRoots
+            markerRoot1 = new THREE.Group();
+            scene.add(markerRoot1);
+            let markerControls1 = new THREEx.ArMarkerControls(arToolkitContext, markerRoot1, {
+                type: 'pattern', 
+                patternUrl: "https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/data/data/patt.hiro",
+                changeMatrixMode: 'cameraTransformMatrix'
+            });
+
+            // Create a simple 3D model instead of loading external files
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshLambertMaterial({color: 0x00ff00});
+            customModel = new THREE.Mesh(geometry, material);
+            customModel.position.set(0, 0.5, 0);
+            markerRoot1.add(customModel);
+
+            // Add plane marker visual aid
+            let planeGeometry = new THREE.PlaneBufferGeometry(1, 1, 4, 4);
+            let planeMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.2, transparent: true });
+            let planeMesh = new THREE.Mesh(planeGeometry, planeMaterial);
+            planeMesh.rotation.x = -Math.PI / 2;
+            markerRoot1.add(planeMesh);
+
+            animateAR();
+        }
+
+        function updateAR() {
+            if (arToolkitSource && arToolkitSource.ready !== false) {
+                arToolkitContext.update(arToolkitSource.domElement);
+            }
+
+            if (customModel && markerRoot1.visible) {
+                customModel.rotation.y += 0.01;
+            }
+        }
+
+        function renderAR() {
+            renderer.render(scene, camera);
+        }
+
+        function animateAR() {
+            requestAnimationFrame(animateAR);
+            deltaTime = clock.getDelta();
+            totalTime += deltaTime;
+            updateAR();
+            renderAR();
+        }
 
         function initDemo3D() {
             const canvas = document.getElementById('threeCanvas');
@@ -445,8 +583,8 @@
             renderer.render(scene, camera);
         }
 
-        // Initialize the demo
-        initDemo3D();
+        // Initialize based on availability
+        // The script will automatically try AR first, then fallback to 3D demo
 
         // Button handlers
         document.querySelector('.next-button').addEventListener('click', () => {
