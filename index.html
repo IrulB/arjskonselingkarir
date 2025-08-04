@@ -73,10 +73,14 @@
             margin: 0;
         }
 
+        /* --- PERBAIKAN UNTUK KAMERA NGE-ZOOM DI SINI --- */
         .camera-container {
             position: relative;
             width: calc(100% - 40px);
-            height: 280px;
+            /* Hapus height eksplisit */
+            height: 0; 
+            /* Gunakan padding-top untuk mempertahankan rasio aspek 4:3 (480/640 = 0.75) */
+            padding-top: 75%; /* Ini akan membuat tinggi 75% dari lebar */
             background-color: black;
             border-radius: 10px;
             overflow: hidden;
@@ -85,17 +89,23 @@
             flex-shrink: 0;
         }
 
-        /* Adjustments for AR.js video and canvas */
-        .camera-container canvas,
+        /* Video dan Canvas harus mengisi kontainer padding-top yang fleksibel */
+        .camera-container canvas, 
         .camera-container video {
-            position: absolute; /* Changed to absolute to allow stacking */
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important; /* Ini akan membuat mereka mengisi tinggi yang diatur oleh padding-top */
             border-radius: 10px;
-            object-fit: cover;
+            object-fit: cover; /* Tetap pertahankan ini untuk mengisi penuh jika ada sedikit perbedaan, tapi harusnya minimal */
+            z-index: 1; /* Video di bawah kanvas AR */
         }
+        /* Kanvas AR di atas video */
+        .camera-container canvas {
+            z-index: 2 !important; 
+        }
+        /* --- AKHIR PERBAIKAN KAMERA NGE-ZOOM --- */
 
         .info-card {
             background-color: white;
@@ -302,14 +312,18 @@
                 sourceType: 'webcam',
                 sourceWidth: 640,  // Standard webcam resolutions
                 sourceHeight: 480, // Standard webcam resolutions
-                displayWidth: cameraContainer.offsetWidth,  // Match container dimensions
-                displayHeight: cameraContainer.offsetHeight // Match container dimensions
+                // displayWidth dan displayHeight akan mengikuti ukuran CSS dari cameraContainer
+                // yang sudah diatur untuk mempertahankan rasio aspek 4:3
+                displayWidth: cameraContainer.offsetWidth,
+                displayHeight: cameraContainer.offsetHeight
             });
 
             function onResize() {
                 // Adjust AR source and renderer size on window resize
                 arToolkitSource.onResize();
-                arToolkitSource.copySizeTo(renderer.domElement);
+                // Pastikan renderer juga menyesuaikan ukuran dengan container
+                const containerRect = cameraContainer.getBoundingClientRect();
+                renderer.setSize(containerRect.width, containerRect.height);
                 if (arToolkitContext && arToolkitContext.arController !== null) {
                     arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
                 }
@@ -327,7 +341,7 @@
                     videoElement.style.left = '0px';
                     videoElement.style.width = '100%';
                     videoElement.style.height = '100%';
-                    videoElement.style.objectFit = 'cover';
+                    videoElement.style.objectFit = 'cover'; // Tetap 'cover' untuk mengisi area
                     videoElement.style.borderRadius = '10px';
                     videoElement.style.zIndex = '1'; // Video behind canvas
                     
@@ -402,18 +416,16 @@
             // Load custom model
             new THREE.MTLLoader()
                 .setPath('models/') // Path to your models folder
-                // Use 'fish-2.mtl' if that's what you prefer, otherwise 'materials.mtl'
-                .load('materials.mtl', function(materials) { // Or 'fish-2.mtl'
+                // Anda bisa menggunakan 'fish-2.mtl' dan 'fish-2.obj' jika itu model yang berhasil sebelumnya
+                .load('materials.mtl', function(materials) { // Ganti 'materials.mtl' dengan 'fish-2.mtl' jika perlu
                     materials.preload();
                     new THREE.OBJLoader()
                         .setMaterials(materials)
                         .setPath('models/') // Path to your models folder
-                        // Use 'fish-2.obj' if that's what you prefer, otherwise 'model.obj'
-                        .load('model.obj', function(group) { // Or 'fish-2.obj'
-                            // Ensure the loaded group contains a mesh. For simple OBJs, it's often the first child.
-                            customModel = group.children[0] || group; // Get the first child or the group itself
+                        .load('model.obj', function(group) { // Ganti 'model.obj' dengan 'fish-2.obj' jika perlu
+                            // Pastikan objek utama yang ingin ditampilkan adalah children pertama atau group itu sendiri
+                            customModel = group.children[0] || group; 
                             if (customModel) {
-                                // Apply material and transformations
                                 customModel.material.side = THREE.DoubleSide; // Render both sides of faces
                                 customModel.position.y = 0.25; // Adjust position relative to marker
                                 customModel.scale.set(0.25, 0.25, 0.25); // Adjust scale
@@ -472,8 +484,8 @@
                 arToolkitContext.update(arToolkitSource.domElement);
             }
 
-            // Optional: Rotate your custom model for visual effect
-            if (customModel && markerRoot1.visible) { // Only rotate if marker is detected
+            // Optional: Rotate your custom model for visual effect only if marker is visible
+            if (customModel && markerRoot1.visible) {
                 customModel.rotation.y += 0.01;
             }
         }
