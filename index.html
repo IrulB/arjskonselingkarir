@@ -7,22 +7,33 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Include Three.js and AR.js libraries -->
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/loaders/OBJLoader.js'></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/loaders/MTLLoader.js'></script>
+    <!-- Include jsartoolkit -->
+    <script src="https://cdn.jsdelivr.net/gh/artoolkitx/jsartoolkit5@master/build/artoolkit.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/artoolkitx/jsartoolkit5@master/build/artoolkit.api.js"></script>
+    <!-- Include threex.artoolkit -->
+    <script src="https://cdn.jsdelivr.net/gh/jeromeetienne/AR.js@master/three.js/build/ar-threex.js"></script>
+    
     <style>
-        /* CSS seperti yang sudah dijelaskan sebelumnya, dengan sedikit peningkatan */
         body {
             margin: 0;
             font-family: 'Roboto', sans-serif;
             background-color: #f0f0f0;
             display: flex;
             justify-content: center;
-            align-items: flex-start; /* Mengatur agar konten mulai dari atas */
+            align-items: flex-start;
             min-height: 100vh;
-            padding-top: 20px; /* Sedikit padding atas */
-            box-sizing: border-box; /* Include padding in element's total width and height */
-            -webkit-user-select: none; /* Disable text selection on webkit browsers */
-            -moz-user-select: none; /* Disable text selection on Firefox */
-            -ms-user-select: none; /* Disable text selection on IE/Edge */
-            user-select: none; /* Standard syntax */
+            padding-top: 20px;
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            overflow: hidden;
         }
 
         .container {
@@ -30,11 +41,13 @@
             flex-direction: column;
             align-items: center;
             width: 100%;
-            max-width: 420px; /* Lebar maksimal mendekati mobile phone */
+            max-width: 420px;
             background-color: white;
             border-radius: 15px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            overflow: hidden; /* Penting untuk border-radius */
+            overflow: hidden;
+            position: relative;
+            z-index: 10;
         }
 
         .header {
@@ -42,7 +55,7 @@
             align-items: center;
             width: 100%;
             padding: 15px 20px;
-            background-color: #007bff; /* Warna biru untuk header */
+            background-color: #007bff;
             color: white;
             font-size: 1.1em;
             font-weight: 500;
@@ -57,24 +70,27 @@
 
         .camera-container {
             position: relative;
-            width: calc(100% - 40px); /* Kurangi padding samping */
-            height: 300px; /* Tinggi kotak hitam */
+            width: calc(100% - 40px);
+            height: 300px;
             background-color: black;
             border-radius: 10px;
             overflow: hidden;
-            margin: 20px 20px 0 20px; /* Atur margin */
-            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5); /* Efek inset shadow */
+            margin: 20px 20px 0 20px;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
         }
 
-        .camera-container video,
-        .camera-container canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover; /* Pastikan video/canvas mengisi area */
-            transform: scaleX(-1); /* Membalik horizontal untuk selfie-like experience, hapus jika tidak diperlukan */
+        #arjsDebugUIContainer {
+            display: none !important;
+        }
+
+        .ar-canvas {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            border-radius: 10px !important;
         }
 
         .info-card {
@@ -103,7 +119,7 @@
         .info-card .profession svg {
             margin-right: 10px;
             color: #007bff;
-            min-width: 24px; /* Fix width for icon */
+            min-width: 24px;
             min-height: 24px;
         }
         .info-card p {
@@ -123,7 +139,7 @@
             font-weight: bold;
             font-size: 1em;
             margin: 20px;
-            width: calc(100% - 40px); /* Sesuaikan lebar */
+            width: calc(100% - 40px);
             box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3);
             transition: background-color 0.3s ease, transform 0.2s ease;
         }
@@ -134,6 +150,20 @@
         .next-button:active {
             transform: translateY(0);
             box-shadow: 0 2px 5px rgba(0, 123, 255, 0.3);
+        }
+
+        .loading-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 100;
+            font-size: 14px;
+            text-align: center;
         }
 
         /* Responsive adjustments */
@@ -151,7 +181,7 @@
                 border-radius: 0;
             }
             .camera-container, .info-card, .next-button {
-                width: calc(100% - 40px); /* Pastikan konsisten */
+                width: calc(100% - 40px);
                 margin-left: 20px;
                 margin-right: 20px;
             }
@@ -165,11 +195,9 @@
             <h2>Karir</h2>
         </div>
 
-        <div class="camera-container">
-            <video id="cameraFeed" autoplay playsinline></video>
-            <canvas id="threeDCanvas"></canvas>
-            <div id="loadingMessage" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 5px; display: none;">
-                Loading 3D model...
+        <div class="camera-container" id="cameraContainer">
+            <div class="loading-message" id="loadingMessage">
+                Memuat AR Camera...
             </div>
         </div>
 
@@ -189,90 +217,138 @@
         <button class="next-button">BERIKUTNYA</button>
     </div>
 
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.min.js",
-                "three/addons/": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/jsm/"
-            }
-        }
-    </script>
-    <script type="module">
-        import * as THREE from 'three';
+    <script>
+        var scene, camera, renderer, clock, deltaTime, totalTime;
+        var arToolkitSource, arToolkitContext;
+        var markerRoot1;
+        var medicalModel;
+        var cameraContainer = document.getElementById('cameraContainer');
+        var loadingMessage = document.getElementById('loadingMessage');
 
-        const cameraFeed = document.getElementById('cameraFeed');
-        const threeDCanvas = document.getElementById('threeDCanvas');
-        const cameraContainer = document.querySelector('.camera-container');
-        const loadingMessage = document.getElementById('loadingMessage');
+        initialize();
+        animate();
 
-        // --- Three.js Variables ---
-        let scene, camera, renderer;
-        let medicalModel; // Untuk menyimpan objek 3D medical
-
-        // Function to initialize Three.js scene
-        function initThreeJS() {
-            // Scene
+        function initialize() {
             scene = new THREE.Scene();
-            scene.background = null; // Set background to null for transparency
 
-            // Camera (Three.js camera, not the device camera)
-            camera = new THREE.PerspectiveCamera(50, cameraContainer.clientWidth / cameraContainer.clientHeight, 0.1, 100);
-            camera.position.set(0, 1.5, 5);
-
-            // Renderer
-            renderer = new THREE.WebGLRenderer({ canvas: threeDCanvas, alpha: true, antialias: true });
-            renderer.setSize(cameraContainer.clientWidth, cameraContainer.clientHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-
-            // Lighting
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            let ambientLight = new THREE.AmbientLight(0xcccccc, 1.0);
             scene.add(ambientLight);
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(0, 10, 5);
-            directionalLight.target.position.set(0, 0, 0);
-            scene.add(directionalLight);
-            scene.add(directionalLight.target);
+            camera = new THREE.Camera();
+            scene.add(camera);
 
-            const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
-            fillLight.position.set(0, -5, 5);
-            scene.add(fillLight);
+            renderer = new THREE.WebGLRenderer({
+                antialias: true,
+                alpha: true
+            });
+            renderer.setClearColor(new THREE.Color('lightgrey'), 0);
+            
+            // Set size to match camera container
+            const containerRect = cameraContainer.getBoundingClientRect();
+            renderer.setSize(containerRect.width, containerRect.height);
+            renderer.domElement.style.position = 'absolute';
+            renderer.domElement.style.top = '0px';
+            renderer.domElement.style.left = '0px';
+            renderer.domElement.style.borderRadius = '10px';
+            renderer.domElement.className = 'ar-canvas';
+            
+            cameraContainer.appendChild(renderer.domElement);
 
-            // Create medical-themed 3D objects as placeholder
+            clock = new THREE.Clock();
+            deltaTime = 0;
+            totalTime = 0;
+
+            ////////////////////////////////////////////////////////////
+            // setup arToolkitSource
+            ////////////////////////////////////////////////////////////
+
+            arToolkitSource = new THREEx.ArToolkitSource({
+                sourceType: 'webcam',
+            });
+
+            function onResize() {
+                arToolkitSource.onResize();
+                const containerRect = cameraContainer.getBoundingClientRect();
+                renderer.setSize(containerRect.width, containerRect.height);
+                if (arToolkitContext.arController !== null) {
+                    arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
+                }
+            }
+
+            arToolkitSource.init(function onReady() {
+                onResize();
+                loadingMessage.textContent = 'AR Camera siap! Arahkan ke marker Hiro';
+                setTimeout(() => {
+                    loadingMessage.style.display = 'none';
+                }, 2000);
+            });
+
+            // handle resize event
+            window.addEventListener('resize', function() {
+                onResize();
+            });
+
+            ////////////////////////////////////////////////////////////
+            // setup arToolkitContext
+            ////////////////////////////////////////////////////////////	
+
+            // create atToolkitContext
+            arToolkitContext = new THREEx.ArToolkitContext({
+                cameraParametersUrl: 'https://cdn.jsdelivr.net/gh/jeromeetienne/AR.js@master/data/data/camera_para.dat',
+                detectionMode: 'mono'
+            });
+
+            // copy projection matrix to camera when initialization complete
+            arToolkitContext.init(function onCompleted() {
+                camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+            });
+
+            ////////////////////////////////////////////////////////////
+            // setup markerRoots
+            ////////////////////////////////////////////////////////////
+
+            // build markerControls
+            markerRoot1 = new THREE.Group();
+            scene.add(markerRoot1);
+            let markerControls1 = new THREEx.ArMarkerControls(arToolkitContext, markerRoot1, {
+                type: 'pattern',
+                patternUrl: 'https://cdn.jsdelivr.net/gh/jeromeetienne/AR.js@master/data/data/patt.hiro',
+            });
+
+            // Create medical-themed objects as fallback if OBJ/MTL loading fails
             createMedicalObjects();
+
+            // Try to load OBJ/MTL model
+            loadMedicalModel();
         }
 
         function createMedicalObjects() {
-            loadingMessage.style.display = 'block';
-            
-            // Create a simple medical cross
+            // Create a simple medical cross as fallback
             const crossGroup = new THREE.Group();
             
             // Vertical bar of cross
-            const verticalGeometry = new THREE.BoxGeometry(0.3, 2, 0.3);
+            const verticalGeometry = new THREE.BoxGeometry(0.05, 0.4, 0.05);
             const crossMaterial = new THREE.MeshLambertMaterial({ color: 0xff4444 });
             const verticalBar = new THREE.Mesh(verticalGeometry, crossMaterial);
             crossGroup.add(verticalBar);
             
             // Horizontal bar of cross
-            const horizontalGeometry = new THREE.BoxGeometry(1.5, 0.3, 0.3);
+            const horizontalGeometry = new THREE.BoxGeometry(0.3, 0.05, 0.05);
             const horizontalBar = new THREE.Mesh(horizontalGeometry, crossMaterial);
             crossGroup.add(horizontalBar);
             
-            // Add a simple capsule/pill shape
-            const pillGeometry = new THREE.CapsuleGeometry ? 
-                new THREE.CapsuleGeometry(0.2, 1, 4, 8) : 
-                new THREE.CylinderGeometry(0.2, 0.2, 1, 8);
+            // Add a simple pill shape
+            const pillGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.2, 8);
             const pillMaterial = new THREE.MeshLambertMaterial({ color: 0x00aa44 });
             const pill = new THREE.Mesh(pillGeometry, pillMaterial);
-            pill.position.set(2, 0, 0);
+            pill.position.set(0.3, 0, 0);
             pill.rotation.z = Math.PI / 4;
             
             // Add a stethoscope-like ring
-            const ringGeometry = new THREE.TorusGeometry(0.5, 0.1, 8, 16);
+            const ringGeometry = new THREE.TorusGeometry(0.08, 0.02, 8, 16);
             const ringMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
             const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-            ring.position.set(-2, 0, 0);
+            ring.position.set(-0.3, 0, 0);
             ring.rotation.x = Math.PI / 2;
             
             medicalModel = new THREE.Group();
@@ -280,77 +356,90 @@
             medicalModel.add(pill);
             medicalModel.add(ring);
             
-            medicalModel.position.set(0, -0.5, 0);
-            medicalModel.scale.set(0.8, 0.8, 0.8);
+            medicalModel.position.y = 0.1;
+            medicalModel.scale.set(1, 1, 1);
             
-            scene.add(medicalModel);
-            
-            loadingMessage.style.display = 'none';
+            markerRoot1.add(medicalModel);
         }
 
-        // Animation loop
-        function animate() {
-            requestAnimationFrame(animate);
-
-            // Gentle rotation for medical objects
-            if (medicalModel) {
-                medicalModel.rotation.y += 0.01;
+        function loadMedicalModel() {
+            function onProgress(xhr) {
+                if (xhr.lengthComputable) {
+                    const percentComplete = xhr.loaded / xhr.total * 100;
+                    console.log(Math.round(percentComplete, 2) + '% downloaded');
+                }
             }
 
+            function onError(xhr) {
+                console.log('Error loading 3D model, using fallback objects');
+                loadingMessage.textContent = 'Menggunakan model fallback';
+            }
+
+            // Try to load MTL and OBJ files
+            // Note: You'll need to replace these URLs with actual accessible URLs to your model files
+            const mtlLoader = new THREE.MTLLoader();
+            mtlLoader.load(
+                'models/materials.mtl', // Your MTL file
+                function(materials) {
+                    materials.preload();
+                    const objLoader = new THREE.OBJLoader();
+                    objLoader.setMaterials(materials);
+                    objLoader.load(
+                        'models/model.obj', // Your OBJ file
+                        function(group) {
+                            // Remove fallback objects
+                            if (medicalModel) {
+                                markerRoot1.remove(medicalModel);
+                            }
+                            
+                            // Add loaded model
+                            const loadedMesh = group.children[0];
+                            if (loadedMesh) {
+                                loadedMesh.material.side = THREE.DoubleSide;
+                                loadedMesh.position.y = 0.1;
+                                loadedMesh.scale.set(0.1, 0.1, 0.1);
+                                markerRoot1.add(loadedMesh);
+                                medicalModel = loadedMesh;
+                            }
+                        },
+                        onProgress,
+                        onError
+                    );
+                },
+                onProgress,
+                onError
+            );
+        }
+
+        function update() {
+            // update artoolkit on every frame
+            if (arToolkitSource.ready !== false)
+                arToolkitContext.update(arToolkitSource.domElement);
+        }
+
+        function render() {
             renderer.render(scene, camera);
         }
 
-        // --- Akses Kamera ---
-        async function setupCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: 'environment'
-                    }
-                });
-                cameraFeed.srcObject = stream;
-                cameraFeed.onloadedmetadata = () => {
-                    cameraFeed.play();
-                    initThreeJS();
-                    animate();
-                };
-            } catch (err) {
-                console.error("Error accessing camera: ", err);
-                // Fallback untuk demo - tampilkan placeholder
-                cameraFeed.style.display = 'none';
-                cameraContainer.style.background = 'linear-gradient(45deg, #667eea 0%, #764ba2 100%)';
-                cameraContainer.innerHTML = '<div style="color: white; text-align: center; padding: 20px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 14px;">Demo Mode - AR Camera View<br><small>Kamera tidak tersedia dalam preview</small></div>';
-                
-                // Still initialize 3D scene for demo
-                setTimeout(() => {
-                    initThreeJS();
-                    animate();
-                }, 1000);
+        function animate() {
+            requestAnimationFrame(animate);
+            deltaTime = clock.getDelta();
+            totalTime += deltaTime;
+            
+            // Gentle rotation for medical objects
+            if (medicalModel) {
+                medicalModel.rotation.y += 0.005;
             }
+            
+            update();
+            render();
         }
 
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            if (renderer && camera) {
-                const width = cameraContainer.clientWidth;
-                const height = cameraContainer.clientHeight;
-                renderer.setSize(width, height);
-                camera.aspect = width / height;
-                camera.updateProjectionMatrix();
-            }
-        });
-
-        // Setup when DOM is ready
-        document.addEventListener('DOMContentLoaded', () => {
-            setupCamera();
-        });
-
-        // Add click handler for next button
+        // Add click handlers
         document.querySelector('.next-button').addEventListener('click', () => {
             alert('Navigasi ke halaman berikutnya - fitur demo');
         });
 
-        // Add click handler for back arrow
         document.querySelector('.back-arrow').addEventListener('click', () => {
             alert('Kembali ke halaman sebelumnya - fitur demo');
         });
