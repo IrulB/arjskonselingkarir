@@ -73,14 +73,11 @@
             margin: 0;
         }
 
-        /* --- PERBAIKAN UNTUK KAMERA NGE-ZOOM DI SINI --- */
         .camera-container {
             position: relative;
             width: calc(100% - 40px);
-            /* Hapus height eksplisit */
             height: 0; 
-            /* Gunakan padding-top untuk mempertahankan rasio aspek 4:3 (480/640 = 0.75) */
-            padding-top: 75%; /* Ini akan membuat tinggi 75% dari lebar */
+            padding-top: 75%; /* Menjaga rasio aspek 4:3 (480/640 = 0.75) */
             background-color: black;
             border-radius: 10px;
             overflow: hidden;
@@ -89,23 +86,19 @@
             flex-shrink: 0;
         }
 
-        /* Video dan Canvas harus mengisi kontainer padding-top yang fleksibel */
         .camera-container canvas, 
         .camera-container video {
             position: absolute !important;
             top: 0 !important;
             left: 0 !important;
             width: 100% !important;
-            height: 100% !important; /* Ini akan membuat mereka mengisi tinggi yang diatur oleh padding-top */
-            border-radius: 10px;
-            object-fit: cover; /* Tetap pertahankan ini untuk mengisi penuh jika ada sedikit perbedaan, tapi harusnya minimal */
+            height: 100% !important; 
+            object-fit: cover; 
             z-index: 1; /* Video di bawah kanvas AR */
         }
-        /* Kanvas AR di atas video */
         .camera-container canvas {
-            z-index: 2 !important; 
+            z-index: 2 !important; /* Kanvas AR di atas video */
         }
-        /* --- AKHIR PERBAIKAN KAMERA NGE-ZOOM --- */
 
         .info-card {
             background-color: white;
@@ -285,9 +278,9 @@
                 antialias: true,
                 alpha: true // Important for transparency to show camera feed
             });
-            renderer.setClearColor(new THREE.Color('lightgrey'), 0);
+            renderer.setClearColor(new THREE.Color('lightgrey'), 0)
             
-            // Get container dimensions dynamically
+            // Get container dimensions dynamically for initial setup
             const containerRect = cameraContainer.getBoundingClientRect();
             renderer.setSize(containerRect.width, containerRect.height);
             renderer.domElement.style.position = 'absolute';
@@ -310,20 +303,24 @@
 
             arToolkitSource = new THREEx.ArToolkitSource({
                 sourceType: 'webcam',
-                sourceWidth: 640,  // Standard webcam resolutions
-                sourceHeight: 480, // Standard webcam resolutions
-                // displayWidth dan displayHeight akan mengikuti ukuran CSS dari cameraContainer
-                // yang sudah diatur untuk mempertahankan rasio aspek 4:3
-                displayWidth: cameraContainer.offsetWidth,
-                displayHeight: cameraContainer.offsetHeight
+                sourceWidth: 640,  // Resolusi sumber webcam (rasio 4:3)
+                sourceHeight: 480, // Resolusi sumber webcam (rasio 4:3)
+                // Hapus displayWidth dan displayHeight di sini agar AR.js secara otomatis menyesuaikan
+                // dengan ukuran kontainer setelah video ditambahkan dan onResize dipanggil.
             });
 
             function onResize() {
                 // Adjust AR source and renderer size on window resize
-                arToolkitSource.onResize();
-                // Pastikan renderer juga menyesuaikan ukuran dengan container
+                arToolkitSource.onResize(); 
+                
+                // Ambil dimensi TERBARU dari cameraContainer setelah CSS diterapkan
                 const containerRect = cameraContainer.getBoundingClientRect();
+                
+                // Pastikan renderer juga menyesuaikan ukuran dengan container
                 renderer.setSize(containerRect.width, containerRect.height);
+                
+                // Penting: copySizeTo arController.canvas juga
+                // Ini memastikan area deteksi marker AR.js sesuai dengan tampilan
                 if (arToolkitContext && arToolkitContext.arController !== null) {
                     arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
                 }
@@ -341,20 +338,21 @@
                     videoElement.style.left = '0px';
                     videoElement.style.width = '100%';
                     videoElement.style.height = '100%';
-                    videoElement.style.objectFit = 'cover'; // Tetap 'cover' untuk mengisi area
+                    videoElement.style.objectFit = 'cover'; // Tetap 'cover' untuk mengisi penuh
                     videoElement.style.borderRadius = '10px';
-                    videoElement.style.zIndex = '1'; // Video behind canvas
+                    videoElement.style.zIndex = '1'; // Video di bawah kanvas
                     
-                    // Insert video element into the camera container
-                    // Make sure it's added before the renderer's canvas
                     cameraContainer.insertBefore(videoElement, renderer.domElement);
                 }
                 
-                onResize(); // Initial resize to set up correct dimensions
-                setupARContext(); // Proceed to set up AR context
+                // Panggil onResize setelah video element dimasukkan ke DOM
+                // Ini memastikan pengukuran containerRect lebih akurat setelah browser merender video
+                onResize(); 
+                
+                setupARContext(); // Lanjutkan inisialisasi konteks AR
             });
 
-            // Listen for window resize events
+            // Listen for window resize events to re-adjust camera and canvas
             window.addEventListener('resize', onResize);
         }
 
@@ -369,7 +367,7 @@
             arToolkitContext.init(function onCompleted() {
                 debugInfo.textContent = 'AR initialized successfully!';
                 camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
-                loadingMessage.style.display = 'none'; // Hide loading message
+                loadingMessage.style.display = 'none'; // Hide loading message once AR is ready
                 setupMarkers(); // Proceed to set up AR markers
             });
         }
@@ -380,13 +378,13 @@
             markerRoot1 = new THREE.Group();
             scene.add(markerRoot1);
             
-            // Use local pattern file
+            // Use local pattern file for marker detection
             let markerControls1 = new THREEx.ArMarkerControls(arToolkitContext, markerRoot1, {
                 type: 'pattern',
                 patternUrl: "data/hiro.patt", // Local path for marker pattern
             });
 
-            // Optional: Add a simple plane to visualize the marker detection area
+            // Optional: Add a simple plane to visualize the marker detection area (for debugging)
             let geometry1 = new THREE.PlaneBufferGeometry(1, 1, 4, 4);
             let material1 = new THREE.MeshBasicMaterial({ color: 0x0000ff, opacity: 0.5, transparent: true });
             let planeMesh = new THREE.Mesh(geometry1, material1);
@@ -413,30 +411,28 @@
                 createFallbackModel(); // Create a simple fallback if model loading fails
             }
 
-            // Load custom model
+            // Load custom model (you can change 'model.obj' and 'materials.mtl' to your actual model files)
             new THREE.MTLLoader()
-                .setPath('models/') // Path to your models folder
-                // Anda bisa menggunakan 'fish-2.mtl' dan 'fish-2.obj' jika itu model yang berhasil sebelumnya
-                .load('materials.mtl', function(materials) { // Ganti 'materials.mtl' dengan 'fish-2.mtl' jika perlu
+                .setPath('models/') 
+                .load('materials.mtl', function(materials) { // Example: 'fish-2.mtl'
                     materials.preload();
                     new THREE.OBJLoader()
                         .setMaterials(materials)
-                        .setPath('models/') // Path to your models folder
-                        .load('model.obj', function(group) { // Ganti 'model.obj' dengan 'fish-2.obj' jika perlu
-                            // Pastikan objek utama yang ingin ditampilkan adalah children pertama atau group itu sendiri
+                        .setPath('models/')
+                        .load('model.obj', function(group) { // Example: 'fish-2.obj'
                             customModel = group.children[0] || group; 
                             if (customModel) {
-                                customModel.material.side = THREE.DoubleSide; // Render both sides of faces
-                                customModel.position.y = 0.25; // Adjust position relative to marker
-                                customModel.scale.set(0.25, 0.25, 0.25); // Adjust scale
-                                markerRoot1.add(customModel); // Add model to the marker root
+                                customModel.material.side = THREE.DoubleSide; 
+                                customModel.position.y = 0.25; 
+                                customModel.scale.set(0.25, 0.25, 0.25); 
+                                markerRoot1.add(customModel); 
                                 debugInfo.textContent = 'Model loaded successfully!';
                             } else {
                                 console.warn("No mesh found in the loaded OBJ group. Using fallback.");
                                 createFallbackModel();
                             }
                         }, onProgress, onError);
-                }, onError); // Pass onError also for MTL loading
+                }, onError); 
         }
 
         function createFallbackModel() {
@@ -479,7 +475,7 @@
         }
 
         function update() {
-            // Only update AR toolkit if source is ready
+            // Update AR toolkit on every frame if source is ready
             if (arToolkitSource && arToolkitSource.ready !== false) {
                 arToolkitContext.update(arToolkitSource.domElement);
             }
@@ -498,8 +494,8 @@
             requestAnimationFrame(animate);
             deltaTime = clock.getDelta();
             totalTime += deltaTime;
-            update(); // Update AR and model
-            render(); // Render the scene
+            update(); 
+            render(); 
         }
 
         // Add click handlers for buttons
