@@ -13,7 +13,7 @@
     <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/loaders/OBJLoader.js'></script>
     <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/loaders/MTLLoader.js'></script>
     
-    <!-- AR.js jsartoolkit approach (exact same as working code) -->
+    <!-- AR.js -->
     <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/aframe/build/aframe-ar.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/three.js/build/ar-threex.js"></script>
     
@@ -83,14 +83,21 @@
             flex-shrink: 0;
         }
 
-        .camera-container canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
+        .camera-container canvas, 
+        .camera-container video {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
             width: 100% !important;
             height: 100% !important;
             border-radius: 10px;
             object-fit: cover;
+            z-index: 1;
+        }
+
+        /* Make sure AR canvas is on top */
+        .camera-container canvas {
+            z-index: 2 !important;
         }
 
         .info-card {
@@ -270,11 +277,14 @@
             });
             renderer.setClearColor(new THREE.Color('lightgrey'), 0);
             
-            // Use fixed size like the working example
-            renderer.setSize(380, 280); // Match container approximate size
+            // Get container dimensions dynamically
+            const containerRect = cameraContainer.getBoundingClientRect();
+            renderer.setSize(containerRect.width, containerRect.height);
             renderer.domElement.style.position = 'absolute';
             renderer.domElement.style.top = '0px';
             renderer.domElement.style.left = '0px';
+            renderer.domElement.style.zIndex = '2';
+            
             cameraContainer.appendChild(renderer.domElement);
 
             clock = new THREE.Clock();
@@ -287,17 +297,18 @@
         function setupARToolkit() {
             debugInfo.textContent = 'Setting up AR Toolkit...';
 
-            ////////////////////////////////////////////////////////////
-            // setup arToolkitSource (exact same as working code)
-            ////////////////////////////////////////////////////////////
             arToolkitSource = new THREEx.ArToolkitSource({
                 sourceType: 'webcam',
+                sourceWidth: 640,
+                sourceHeight: 480,
+                displayWidth: cameraContainer.offsetWidth,
+                displayHeight: cameraContainer.offsetHeight
             });
 
             function onResize() {
                 arToolkitSource.onResize();
                 arToolkitSource.copySizeTo(renderer.domElement);
-               if (arToolkitContext && arToolkitContext.arController !== null) {
+                if (arToolkitContext && arToolkitContext.arController !== null) {
                     arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
                 }
             }
@@ -305,11 +316,27 @@
             arToolkitSource.init(function onReady() {
                 debugInfo.textContent = 'Camera ready!';
                 loadingMessage.textContent = 'Kamera siap! Mencari marker...';
+                
+                // Make sure video element is properly positioned
+                const videoElement = arToolkitSource.domElement;
+                if (videoElement) {
+                    videoElement.style.position = 'absolute';
+                    videoElement.style.top = '0px';
+                    videoElement.style.left = '0px';
+                    videoElement.style.width = '100%';
+                    videoElement.style.height = '100%';
+                    videoElement.style.objectFit = 'cover';
+                    videoElement.style.borderRadius = '10px';
+                    videoElement.style.zIndex = '1';
+                    
+                    // Insert video before canvas
+                    cameraContainer.insertBefore(videoElement, renderer.domElement);
+                }
+                
                 onResize();
                 setupARContext();
             });
 
-            // handle resize event
             window.addEventListener('resize', function() {
                 onResize();
             });
@@ -318,16 +345,11 @@
         function setupARContext() {
             debugInfo.textContent = 'Setting up AR Context...';
 
-            ////////////////////////////////////////////////////////////
-            // setup arToolkitContext (exact same as working code)
-            ////////////////////////////////////////////////////////////
-            // create arToolkitContext
             arToolkitContext = new THREEx.ArToolkitContext({
                 cameraParametersUrl: 'https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/data/data/camera_para.dat',
                 detectionMode: 'mono'
             });
 
-            // copy projection matrix to camera when initialization complete
             arToolkitContext.init(function onCompleted() {
                 debugInfo.textContent = 'AR initialized successfully!';
                 camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
@@ -339,10 +361,6 @@
         function setupMarkers() {
             debugInfo.textContent = 'Setting up markers...';
 
-            ////////////////////////////////////////////////////////////
-            // setup markerRoots (exact same as working code)
-            ////////////////////////////////////////////////////////////
-            // build markerControls
             markerRoot1 = new THREE.Group();
             scene.add(markerRoot1);
             
@@ -351,7 +369,7 @@
                 patternUrl: "https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.5/data/data/patt.hiro",
             });
 
-            // Add marker plane for visualization (exact same as working code)
+            // Add marker plane for visualization
             let geometry1 = new THREE.PlaneBufferGeometry(1, 1, 4, 4);
             let material1 = new THREE.MeshBasicMaterial({ color: 0x0000ff, opacity: 0.5, transparent: true });
             let planeMesh = new THREE.Mesh(geometry1, material1);
@@ -446,8 +464,7 @@
         }
 
         function update() {
-            // update artoolkit on every frame (exact same as working code)
-            if (arToolkitSource.ready !== false) {
+            if (arToolkitSource && arToolkitSource.ready !== false) {
                 arToolkitContext.update(arToolkitSource.domElement);
             }
 
