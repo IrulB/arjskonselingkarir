@@ -8,6 +8,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'></script>
+    <script src='https://cdn.rawgit.com/mrdoob/three.js/r92/examples/js/loaders/OBJLoader.js'></script>
+    <script src='https://cdn.rawgit.com/mrdoob/three.js/r92/examples/js/loaders/MTLLoader.js'></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -74,22 +78,13 @@
             flex-shrink: 0;
         }
 
-        .camera-container video {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            border-radius: 10px;
-        }
-
+        /* AR.js canvas will be placed here */
         .camera-container canvas {
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
+            width: 100% !important; /* Override AR.js inline style */
+            height: 100% !important; /* Override AR.js inline style */
             border-radius: 10px;
         }
 
@@ -205,12 +200,10 @@
         </div>
 
         <div class="camera-container" id="cameraContainer">
-            <video id="cameraFeed" autoplay playsinline></video>
-            <canvas id="threeDCanvas"></canvas>
             <div class="loading-message" id="loadingMessage">
                 Memuat AR Camera...
             </div>
-        </div>
+            </div>
 
         <div class="info-card">
             <h3>S1 Kedokteran</h3>
@@ -228,188 +221,154 @@
         <button class="next-button">BERIKUTNYA</button>
     </div>
 
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.min.js"
-            }
-        }
-    </script>
-    <script type="module">
-        import * as THREE from 'three';
+    <script>
+        var scene, camera, renderer, clock, deltaTime, totalTime;
+        var arToolkitSource, arToolkitContext;
+        var markerRoot1;
+        var customModel; // Renamed from mesh0 to be more descriptive for your custom model
 
-        const cameraFeed = document.getElementById('cameraFeed');
-        const threeDCanvas = document.getElementById('threeDCanvas');
         const cameraContainer = document.getElementById('cameraContainer');
         const loadingMessage = document.getElementById('loadingMessage');
 
-        // --- Three.js Variables ---
-        let scene, camera, renderer;
-        let medicalModel;
-        let isARMode = false;
+        initialize();
+        animate();
 
-        // Function to initialize Three.js scene
-        function initThreeJS() {
-            // Scene
+        function initialize() {
             scene = new THREE.Scene();
-            scene.background = null; // Set background to null for transparency
 
-            // Camera (Three.js camera, not the device camera)
-            camera = new THREE.PerspectiveCamera(50, cameraContainer.clientWidth / cameraContainer.clientHeight, 0.1, 100);
-            camera.position.set(0, 1.5, 3);
-
-            // Renderer
-            renderer = new THREE.WebGLRenderer({ canvas: threeDCanvas, alpha: true, antialias: true });
-            renderer.setSize(cameraContainer.clientWidth, cameraContainer.clientHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-
-            // Lighting
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            let ambientLight = new THREE.AmbientLight(0xcccccc, 1.0);
             scene.add(ambientLight);
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(0, 10, 5);
-            directionalLight.target.position.set(0, 0, 0);
-            scene.add(directionalLight);
-            scene.add(directionalLight.target);
+            camera = new THREE.Camera(); // AR.js will manage this camera's projection matrix
+            scene.add(camera);
 
-            const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
-            fillLight.position.set(0, -5, 5);
-            scene.add(fillLight);
+            renderer = new THREE.WebGLRenderer({
+                antialias: true,
+                alpha: true
+            });
+            renderer.setClearColor(new THREE.Color('lightgrey'), 0);
+            renderer.setSize(cameraContainer.clientWidth, cameraContainer.clientHeight);
+            renderer.domElement.style.position = 'absolute';
+            renderer.domElement.style.top = '0px';
+            renderer.domElement.style.left = '0px';
+            // Append renderer.domElement to cameraContainer instead of body
+            cameraContainer.appendChild(renderer.domElement);
 
-            // Create medical-themed 3D objects
-            createMedicalObjects();
-        }
+            clock = new THREE.Clock();
+            deltaTime = 0;
+            totalTime = 0;
 
-        function createMedicalObjects() {
-            // Create a simple medical cross
-            const crossGroup = new THREE.Group();
-            
-            // Vertical bar of cross
-            const verticalGeometry = new THREE.BoxGeometry(0.3, 2, 0.3);
-            const crossMaterial = new THREE.MeshLambertMaterial({ color: 0xff4444 });
-            const verticalBar = new THREE.Mesh(verticalGeometry, crossMaterial);
-            crossGroup.add(verticalBar);
-            
-            // Horizontal bar of cross
-            const horizontalGeometry = new THREE.BoxGeometry(1.5, 0.3, 0.3);
-            const horizontalBar = new THREE.Mesh(horizontalGeometry, crossMaterial);
-            crossGroup.add(horizontalBar);
-            
-            // Add a simple pill shape
-            const pillGeometry = new THREE.CylinderGeometry(0.2, 0.2, 1, 8);
-            const pillMaterial = new THREE.MeshLambertMaterial({ color: 0x00aa44 });
-            const pill = new THREE.Mesh(pillGeometry, pillMaterial);
-            pill.position.set(2, 0, 0);
-            pill.rotation.z = Math.PI / 4;
-            
-            // Add a stethoscope-like ring
-            const ringGeometry = new THREE.TorusGeometry(0.5, 0.1, 8, 16);
-            const ringMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
-            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-            ring.position.set(-2, 0, 0);
-            ring.rotation.x = Math.PI / 2;
-            
-            medicalModel = new THREE.Group();
-            medicalModel.add(crossGroup);
-            medicalModel.add(pill);
-            medicalModel.add(ring);
-            
-            medicalModel.position.set(0, -0.5, 0);
-            medicalModel.scale.set(0.8, 0.8, 0.8);
-            
-            scene.add(medicalModel);
-        }
+            ////////////////////////////////////////////////////////////
+            // setup arToolkitSource
+            ////////////////////////////////////////////////////////////
 
-        // Animation loop
-        function animate() {
-            requestAnimationFrame(animate);
+            arToolkitSource = new THREEx.ArToolkitSource({
+                sourceType: 'webcam',
+                sourceWidth: cameraContainer.clientWidth,
+                sourceHeight: cameraContainer.clientHeight
+            });
 
-            // Gentle rotation for medical objects
-            if (medicalModel) {
-                medicalModel.rotation.y += 0.01;
+            function onResize() {
+                arToolkitSource.onResize();
+                arToolkitSource.copySizeTo(renderer.domElement);
+                if (arToolkitContext.arController !== null) {
+                    arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
+                }
             }
 
+            arToolkitSource.init(function onReady() {
+                onResize();
+                loadingMessage.textContent = 'Kamera siap! Mencari marker...';
+            });
+
+            // handle resize event
+            window.addEventListener('resize', function() {
+                onResize();
+            });
+
+            ////////////////////////////////////////////////////////////
+            // setup arToolkitContext
+            ////////////////////////////////////////////////////////////	
+
+            // create atToolkitContext
+            arToolkitContext = new THREEx.ArToolkitContext({
+                cameraParametersUrl: 'data/camera_para.dat',
+                detectionMode: 'mono'
+            });
+
+            // copy projection matrix to camera when initialization complete
+            arToolkitContext.init(function onCompleted() {
+                camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
+                loadingMessage.style.display = 'none'; // Hide loading message once AR context is ready
+            });
+
+            ////////////////////////////////////////////////////////////
+            // setup markerRoots
+            ////////////////////////////////////////////////////////////
+
+            // build markerControls
+            markerRoot1 = new THREE.Group();
+            scene.add(markerRoot1);
+            let markerControls1 = new THREEx.ArMarkerControls(arToolkitContext, markerRoot1, {
+                type: 'pattern', patternUrl: "data/hiro.patt",
+                changeMatrixMode: 'cameraTransformMatrix' // Important for object to follow camera
+            });
+
+            // Load your 3D model
+            function onProgress(xhr) { console.log((xhr.loaded / xhr.total * 100) + '% loaded'); }
+            function onError(xhr) { console.error('An error happened', xhr); }
+
+            new THREE.MTLLoader()
+                .setPath('models/')
+                .load('materials.mtl', function(materials) { // Use materials.mtl
+                    materials.preload();
+                    new THREE.OBJLoader()
+                        .setMaterials(materials)
+                        .setPath('models/')
+                        .load('model.obj', function(group) { // Use model.obj
+                            customModel = group.children[0];
+                            if (customModel) {
+                                customModel.material.side = THREE.DoubleSide;
+                                customModel.position.set(0, 0.5, 0); // Adjust position as needed
+                                customModel.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
+                                markerRoot1.add(customModel);
+                            } else {
+                                console.warn("No mesh found in the loaded OBJ group.");
+                            }
+                        }, onProgress, onError);
+                }, onError);
+
+            // Add a basic plane as a visual aid for the marker (optional, can be removed)
+            let geometry1 = new THREE.PlaneBufferGeometry(1, 1, 4, 4);
+            let material1 = new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.2, transparent: true });
+            let planeMesh = new THREE.Mesh(geometry1, material1);
+            planeMesh.rotation.x = -Math.PI / 2;
+            markerRoot1.add(planeMesh);
+        }
+
+        function update() {
+            // update artoolkit on every frame
+            if (arToolkitSource.ready !== false) {
+                arToolkitContext.update(arToolkitSource.domElement);
+            }
+
+            // Optional: Rotate your custom model for visual effect if you like
+            if (customModel && markerRoot1.visible) {
+                 customModel.rotation.y += 0.01;
+            }
+        }
+
+        function render() {
             renderer.render(scene, camera);
         }
 
-        // --- Setup Camera ---
-        async function setupCamera() {
-            try {
-                loadingMessage.textContent = 'Mengakses kamera...';
-                
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: 'environment',
-                        width: { ideal: 640 },
-                        height: { ideal: 480 }
-                    }
-                });
-                
-                cameraFeed.srcObject = stream;
-                cameraFeed.onloadedmetadata = () => {
-                    cameraFeed.play();
-                    loadingMessage.textContent = 'Kamera siap! Mode demo aktif';
-                    
-                    // Initialize Three.js after video feed is ready
-                    initThreeJS();
-                    animate();
-                    
-                    // Hide loading message after delay
-                    setTimeout(() => {
-                        loadingMessage.style.display = 'none';
-                    }, 2000);
-                };
-            } catch (err) {
-                console.error("Error accessing camera: ", err);
-                handleCameraError();
-            }
+        function animate() {
+            requestAnimationFrame(animate);
+            deltaTime = clock.getDelta();
+            totalTime += deltaTime;
+            update();
+            render();
         }
-
-        function handleCameraError() {
-            // Fallback untuk demo - tampilkan placeholder
-            cameraFeed.style.display = 'none';
-            cameraContainer.style.background = 'linear-gradient(45deg, #667eea 0%, #764ba2 100%)';
-            
-            const fallbackDiv = document.createElement('div');
-            fallbackDiv.style.cssText = `
-                color: white; 
-                text-align: center; 
-                padding: 20px; 
-                position: absolute; 
-                top: 50%; 
-                left: 50%; 
-                transform: translate(-50%, -50%); 
-                font-size: 14px;
-                z-index: 1;
-            `;
-            fallbackDiv.innerHTML = 'Demo Mode - AR Camera View<br><small>Kamera tidak tersedia dalam preview</small>';
-            
-            cameraContainer.appendChild(fallbackDiv);
-            loadingMessage.style.display = 'none';
-            
-            // Still initialize 3D scene for demo
-            setTimeout(() => {
-                initThreeJS();
-                animate();
-            }, 1000);
-        }
-
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            if (renderer && camera) {
-                const width = cameraContainer.clientWidth;
-                const height = cameraContainer.clientHeight;
-                renderer.setSize(width, height);
-                camera.aspect = width / height;
-                camera.updateProjectionMatrix();
-            }
-        });
-
-        // Setup when DOM is ready
-        document.addEventListener('DOMContentLoaded', () => {
-            setupCamera();
-        });
 
         // Add click handlers
         document.querySelector('.next-button').addEventListener('click', () => {
@@ -418,6 +377,18 @@
 
         document.querySelector('.back-arrow').addEventListener('click', () => {
             alert('Kembali ke halaman sebelumnya - fitur demo');
+        });
+
+        // Handle window resize for the camera container
+        window.addEventListener('resize', () => {
+            if (renderer && camera) {
+                const width = cameraContainer.clientWidth;
+                const height = cameraContainer.clientHeight;
+                renderer.setSize(width, height);
+                // The AR.js camera projection matrix is handled by arToolkitContext,
+                // so we don't need to manually update camera.aspect or projectionMatrix here.
+                onResize(); // Call AR.js's resize handler
+            }
         });
     </script>
 </body>
