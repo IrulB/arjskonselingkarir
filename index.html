@@ -8,17 +8,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     
-    <script src='js/three.js'></script>
-    <script src='js/OBJLoader.js'></script>
-    <script src='js/MTLLoader.js'></script>
-    
-    <script src="jsartoolkit5/artoolkit.min.js"></script>
-    <script src="jsartoolkit5/artoolkit.api.js"></script>
-    <script src="threex/threex-artoolkitsource.js"></script>
-    <script src="threex/threex-artoolkitcontext.js"></script>
-    <script src="threex/threex-arbasecontrols.js"></script>
-    <script src="threex/threex-armarkercontrols.js"></script>
-    
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'></script>
+    <script src='https://cdn.rawgit.com/mrdoob/three.js/r92/examples/js/loaders/OBJLoader.js'></script>
+    <script src='https://cdn.rawgit.com/mrdoob/three.js/r92/examples/js/loaders/MTLLoader.js'></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.min.js"></script>
+
     <style>
         body {
             margin: 0;
@@ -76,9 +70,12 @@
         .camera-container {
             position: relative;
             width: calc(100% - 40px);
-            height: 0; 
-            padding-top: 75%; /* Menjaga rasio aspek 4:3 (480/640 = 0.75) */
-            background-color: black;
+            /* Mengatur tinggi berdasarkan rasio aspek 4:3 dari lebar */
+            /* Lebar container (100% - 40px) * 0.75 = Tinggi untuk rasio 4:3 */
+            padding-bottom: calc((100% - 40px) * 0.75); /* Menggunakan padding-bottom untuk rasio aspek */
+            height: 0; /* Set height ke 0 agar padding-bottom bekerja */
+            
+            background-color: black; /* Tetap hitam sebagai fallback/background */
             border-radius: 10px;
             overflow: hidden;
             margin: 20px 20px 0 20px;
@@ -86,18 +83,16 @@
             flex-shrink: 0;
         }
 
-        .camera-container canvas, 
+        /* AR.js canvas dan video akan diatur oleh AR.js, kita memastikan mereka mengisi container */
+        .camera-container canvas,
         .camera-container video {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            height: 100% !important; 
-            object-fit: cover; 
-            z-index: 1; /* Video di bawah kanvas AR */
-        }
-        .camera-container canvas {
-            z-index: 2 !important; /* Kanvas AR di atas video */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100% !important; /* Override AR.js inline style */
+            height: 100% !important; /* Override AR.js inline style */
+            object-fit: cover; /* Penting: agar video/canvas mengisi area sepenuhnya tanpa bar hitam */
+            border-radius: 10px;
         }
 
         .info-card {
@@ -181,18 +176,6 @@
             text-align: center;
         }
 
-        .debug-info {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.8);
-            color: white;
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 12px;
-            z-index: 1000;
-        }
-
         /* Responsive adjustments */
         @media (max-width: 600px) {
             body {
@@ -213,6 +196,14 @@
                 margin-left: 20px;
                 margin-right: 20px;
             }
+            /* Sesuaikan rasio aspek untuk tampilan mobile penuh */
+            .camera-container {
+                width: 100%;
+                padding-bottom: 75%; /* Rasio 4:3 untuk lebar penuh */
+                margin-left: 0;
+                margin-right: 0;
+                border-radius: 0;
+            }
         }
     </style>
 </head>
@@ -227,8 +218,7 @@
             <div class="loading-message" id="loadingMessage">
                 Memuat AR Camera...
             </div>
-            <div class="debug-info" id="debugInfo">Initializing...</div>
-        </div>
+            </div>
 
         <div class="info-card">
             <h3>S1 Kedokteran</h3>
@@ -250,239 +240,201 @@
         var scene, camera, renderer, clock, deltaTime, totalTime;
         var arToolkitSource, arToolkitContext;
         var markerRoot1;
-        var customModel; // This will hold your 3D model
+        var customModel; 
 
-        // Get DOM elements
         const cameraContainer = document.getElementById('cameraContainer');
         const loadingMessage = document.getElementById('loadingMessage');
-        const debugInfo = document.getElementById('debugInfo');
 
-        // Initialize AR scene and elements
         initialize();
-        // Start animation loop
         animate();
 
         function initialize() {
-            debugInfo.textContent = 'Creating scene...';
-            
-            // === THREE.JS INITIALIZATION ===
             scene = new THREE.Scene();
 
             let ambientLight = new THREE.AmbientLight(0xcccccc, 1.0);
             scene.add(ambientLight);
 
-            camera = new THREE.Camera();
+            camera = new THREE.Camera(); // AR.js will manage this camera's projection matrix
             scene.add(camera);
 
             renderer = new THREE.WebGLRenderer({
                 antialias: true,
-                alpha: true // Important for transparency to show camera feed
+                alpha: true // Penting untuk transparansi agar video kamera terlihat di bawah 3D
             });
-            renderer.setClearColor(new THREE.Color('lightgrey'), 0)
+            renderer.setClearColor(new THREE.Color('lightgrey'), 0); // Background transparan
             
-            // Get container dimensions dynamically for initial setup
-            const containerRect = cameraContainer.getBoundingClientRect();
-            renderer.setSize(containerRect.width, containerRect.height);
+            // Mengatur ukuran renderer berdasarkan container
+            // Pastikan ini cocok dengan rasio aspek container di CSS
+            renderer.setSize(cameraContainer.clientWidth, cameraContainer.clientHeight);
             renderer.domElement.style.position = 'absolute';
             renderer.domElement.style.top = '0px';
             renderer.domElement.style.left = '0px';
-            renderer.domElement.style.zIndex = '2'; // Ensure canvas is above video
-            
+            renderer.domElement.style.width = '100%'; // Pastikan canvas mengisi lebar container
+            renderer.domElement.style.height = '100%'; // Pastikan canvas mengisi tinggi container
+            renderer.domElement.style.objectFit = 'cover'; // Penting: agar canvas memenuhi area tanpa bar hitam
             cameraContainer.appendChild(renderer.domElement);
 
             clock = new THREE.Clock();
             deltaTime = 0;
             totalTime = 0;
 
-            // === AR.JS TOOLKIT SETUP ===
-            setupARToolkit();
-        }
-
-        function setupARToolkit() {
-            debugInfo.textContent = 'Setting up AR Toolkit source...';
+            ////////////////////////////////////////////////////////////
+            // setup arToolkitSource
+            ////////////////////////////////////////////////////////////
 
             arToolkitSource = new THREEx.ArToolkitSource({
                 sourceType: 'webcam',
-                sourceWidth: 640,  // Resolusi sumber webcam (rasio 4:3)
-                sourceHeight: 480, // Resolusi sumber webcam (rasio 4:3)
-                // Hapus displayWidth dan displayHeight di sini agar AR.js secara otomatis menyesuaikan
-                // dengan ukuran kontainer setelah video ditambahkan dan onResize dipanggil.
+                // Tentukan resolusi ideal yang mendekati rasio 4:3 (misal 640x480)
+                // Ini akan membantu AR.js mencocokkan rasio aspek dengan lebih baik
+                sourceWidth: 640,
+                sourceHeight: 480
             });
 
             function onResize() {
-                // Adjust AR source and renderer size on window resize
-                arToolkitSource.onResize(); 
-                
-                // Ambil dimensi TERBARU dari cameraContainer setelah CSS diterapkan
-                const containerRect = cameraContainer.getBoundingClientRect();
-                
-                // Pastikan renderer juga menyesuaikan ukuran dengan container
-                renderer.setSize(containerRect.width, containerRect.height);
-                
-                // Penting: copySizeTo arController.canvas juga
-                // Ini memastikan area deteksi marker AR.js sesuai dengan tampilan
-                if (arToolkitContext && arToolkitContext.arController !== null) {
+                arToolkitSource.onResize();
+                // Ini akan memastikan ukuran video dan kanvas AR.js sesuai dengan ukuran yang diberikan
+                arToolkitSource.copySizeTo(renderer.domElement);
+                if (arToolkitContext.arController !== null) {
                     arToolkitSource.copySizeTo(arToolkitContext.arController.canvas);
                 }
             }
 
             arToolkitSource.init(function onReady() {
-                debugInfo.textContent = 'Camera ready!';
+                onResize();
                 loadingMessage.textContent = 'Kamera siap! Mencari marker...';
-                
-                // AR.js automatically creates a video element. Ensure it's correctly styled.
-                const videoElement = arToolkitSource.domElement;
-                if (videoElement) {
-                    videoElement.style.position = 'absolute';
-                    videoElement.style.top = '0px';
-                    videoElement.style.left = '0px';
-                    videoElement.style.width = '100%';
-                    videoElement.style.height = '100%';
-                    videoElement.style.objectFit = 'cover'; // Tetap 'cover' untuk mengisi penuh
-                    videoElement.style.borderRadius = '10px';
-                    videoElement.style.zIndex = '1'; // Video di bawah kanvas
-                    
-                    cameraContainer.insertBefore(videoElement, renderer.domElement);
-                }
-                
-                // Panggil onResize setelah video element dimasukkan ke DOM
-                // Ini memastikan pengukuran containerRect lebih akurat setelah browser merender video
-                onResize(); 
-                
-                setupARContext(); // Lanjutkan inisialisasi konteks AR
+                // Menyembunyikan pesan loading setelah beberapa saat
+                setTimeout(() => {
+                    loadingMessage.style.display = 'none';
+                }, 2000);
+            }, function(err) {
+                console.error("Gagal mengakses kamera:", err);
+                loadingMessage.textContent = 'Gagal memuat kamera. Mode demo aktif.';
+                loadingMessage.style.backgroundColor = 'rgba(255,0,0,0.7)'; // Warna merah untuk error
+                // Jika kamera gagal, kita bisa tampilkan placeholder atau mode demo statis
+                cameraContainer.style.background = 'linear-gradient(45deg, #667eea 0%, #764ba2 100%)';
+                const fallbackDiv = document.createElement('div');
+                fallbackDiv.style.cssText = `
+                    color: white; 
+                    text-align: center; 
+                    padding: 20px; 
+                    position: absolute; 
+                    top: 50%; 
+                    left: 50%; 
+                    transform: translate(-50%, -50%); 
+                    font-size: 14px;
+                    z-index: 1;
+                `;
+                fallbackDiv.innerHTML = 'Kamera tidak tersedia.<br><small>Pastikan Anda mengakses melalui HTTPS.</small>';
+                cameraContainer.appendChild(fallbackDiv);
+
+                // Tetap inisialisasi Three.js untuk demo model statis
+                initFallbackDemo();
             });
 
-            // Listen for window resize events to re-adjust camera and canvas
-            window.addEventListener('resize', onResize);
-        }
+            // handle resize event
+            window.addEventListener('resize', function() {
+                onResize();
+            });
 
-        function setupARContext() {
-            debugInfo.textContent = 'Setting up AR Context...';
+            ////////////////////////////////////////////////////////////
+            // setup arToolkitContext
+            ////////////////////////////////////////////////////////////	
 
+            // create atToolkitContext
             arToolkitContext = new THREEx.ArToolkitContext({
-                cameraParametersUrl: 'data/camera_para.dat', // Local path for camera parameters
+                cameraParametersUrl: 'data/camera_para.dat',
                 detectionMode: 'mono'
             });
 
+            // copy projection matrix to camera when initialization complete
             arToolkitContext.init(function onCompleted() {
-                debugInfo.textContent = 'AR initialized successfully!';
                 camera.projectionMatrix.copy(arToolkitContext.getProjectionMatrix());
-                loadingMessage.style.display = 'none'; // Hide loading message once AR is ready
-                setupMarkers(); // Proceed to set up AR markers
             });
-        }
 
-        function setupMarkers() {
-            debugInfo.textContent = 'Setting up markers...';
+            ////////////////////////////////////////////////////////////
+            // setup markerRoots
+            ////////////////////////////////////////////////////////////
 
+            // build markerControls
             markerRoot1 = new THREE.Group();
             scene.add(markerRoot1);
-            
-            // Use local pattern file for marker detection
             let markerControls1 = new THREEx.ArMarkerControls(arToolkitContext, markerRoot1, {
-                type: 'pattern',
-                patternUrl: "data/hiro.patt", // Local path for marker pattern
+                type: 'pattern', patternUrl: "data/hiro.patt",
+                changeMatrixMode: 'cameraTransformMatrix' 
             });
+            markerRoot1.visible = false; // Awalnya sembunyikan sampai marker terdeteksi
 
-            // Optional: Add a simple plane to visualize the marker detection area (for debugging)
-            let geometry1 = new THREE.PlaneBufferGeometry(1, 1, 4, 4);
-            let material1 = new THREE.MeshBasicMaterial({ color: 0x0000ff, opacity: 0.5, transparent: true });
-            let planeMesh = new THREE.Mesh(geometry1, material1);
-            planeMesh.rotation.x = -Math.PI / 2; // Rotate to lie flat on the marker
-            markerRoot1.add(planeMesh);
-
-            loadModels(); // Load your 3D model
-        }
-
-        function loadModels() {
-            debugInfo.textContent = 'Loading 3D model...';
-
-            function onProgress(xhr) {
-                if (xhr.lengthComputable) {
-                    const percentComplete = xhr.loaded / xhr.total * 100;
-                    console.log(percentComplete + '% loaded');
-                    debugInfo.textContent = 'Loading model: ' + Math.round(percentComplete) + '%';
+            // Load your 3D model
+            function onProgress(xhr) { 
+                console.log('Model loading: ' + (xhr.loaded / xhr.total * 100) + '% loaded'); 
+                if (xhr.loaded / xhr.total === 1) {
+                    loadingMessage.textContent = 'Model 3D berhasil dimuat!';
+                    // Sembunyikan pesan setelah model dimuat dan siap
+                    setTimeout(() => {
+                        loadingMessage.style.display = 'none';
+                    }, 1500);
                 }
             }
-
-            function onError(xhr) {
-                console.error('Model loading error:', xhr);
-                debugInfo.textContent = 'Model loading failed - using fallback';
-                createFallbackModel(); // Create a simple fallback if model loading fails
+            function onError(xhr) { 
+                console.error('Terjadi kesalahan saat memuat model:', xhr); 
+                loadingMessage.textContent = 'Gagal memuat model 3D. Periksa konsol.';
+                loadingMessage.style.backgroundColor = 'rgba(255,0,0,0.7)';
             }
 
-            // Load custom model (you can change 'model.obj' and 'materials.mtl' to your actual model files)
             new THREE.MTLLoader()
-                .setPath('models/') 
-                .load('materials.mtl', function(materials) { // Example: 'fish-2.mtl'
+                .setPath('models/')
+                .load('materials.mtl', function(materials) { 
                     materials.preload();
                     new THREE.OBJLoader()
                         .setMaterials(materials)
                         .setPath('models/')
-                        .load('model.obj', function(group) { // Example: 'fish-2.obj'
-                            customModel = group.children[0] || group; 
+                        .load('model.obj', function(group) { 
+                            customModel = group.children[0];
                             if (customModel) {
-                                customModel.material.side = THREE.DoubleSide; 
-                                customModel.position.y = 0.25; 
-                                customModel.scale.set(0.25, 0.25, 0.25); 
-                                markerRoot1.add(customModel); 
-                                debugInfo.textContent = 'Model loaded successfully!';
+                                customModel.material.side = THREE.DoubleSide;
+                                customModel.position.set(0, 0.5, 0); // Atur posisi relatif terhadap marker
+                                customModel.scale.set(0.5, 0.5, 0.5); // Atur skala
+                                markerRoot1.add(customModel);
+                                console.log("Model 3D 'model.obj' berhasil ditambahkan ke scene.");
                             } else {
-                                console.warn("No mesh found in the loaded OBJ group. Using fallback.");
-                                createFallbackModel();
+                                console.warn("Tidak ada mesh yang ditemukan di grup OBJ yang dimuat.");
                             }
                         }, onProgress, onError);
-                }, onError); 
+                }, onError);
+
+            // Tambahkan bidang dasar sebagai bantuan visual untuk marker (opsional)
+            let geometry1 = new THREE.PlaneBufferGeometry(1, 1, 4, 4);
+            let material1 = new THREE.MeshBasicMaterial({ color: 0x00ff00, opacity: 0.2, transparent: true });
+            let planeMesh = new THREE.Mesh(geometry1, material1);
+            planeMesh.rotation.x = -Math.PI / 2;
+            markerRoot1.add(planeMesh);
         }
 
-        function createFallbackModel() {
-            // Create a simple medical-themed fallback model (stethoscope-like shape)
-            const group = new THREE.Group();
-            
-            // Main tube
-            const tubeGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.6, 8);
-            const tubeMaterial = new THREE.MeshBasicMaterial({color: 0x2c5aa0});
-            const tube = new THREE.Mesh(tubeGeometry, tubeMaterial);
-            tube.position.set(0, 0.3, 0);
-            group.add(tube);
-            
-            // Chest piece
-            const chestGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.03, 16);
-            const chestMaterial = new THREE.MeshBasicMaterial({color: 0x1a365d});
-            const chestPiece = new THREE.Mesh(chestGeometry, chestMaterial);
-            chestPiece.position.set(0, 0, 0);
-            chestPiece.rotation.x = Math.PI / 2;
-            group.add(chestPiece);
-            
-            // Earpieces
-            const earGeometry = new THREE.SphereGeometry(0.03, 8, 8);
-            const earMaterial = new THREE.MeshBasicMaterial({color: 0x2c5aa0});
-            
-            const leftEar = new THREE.Mesh(earGeometry, earMaterial);
-            leftEar.position.set(-0.15, 0.6, 0);
-            group.add(leftEar);
-            
-            const rightEar = new THREE.Mesh(earGeometry, earMaterial);
-            rightEar.position.set(0.15, 0.6, 0);
-            group.add(rightEar);
-            
-            customModel = group;
-            customModel.position.y = 0.25;
-            customModel.scale.set(0.5, 0.5, 0.5);
-            markerRoot1.add(customModel);
-            
-            debugInfo.textContent = 'Using fallback stethoscope model';
+        // Fungsi fallback jika kamera tidak tersedia (untuk demo statis)
+        function initFallbackDemo() {
+            // Scene, camera, renderer sudah diinisialisasi di initialize()
+            // Kita hanya perlu menambahkan objek demo jika model kustom tidak ada
+            if (!customModel) {
+                const geometry = new THREE.SphereGeometry(0.5, 32, 16);
+                const material = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+                const sphere = new THREE.Mesh(geometry, material);
+                sphere.position.y = 0.5;
+                scene.add(sphere);
+                console.log("Menampilkan objek demo karena kamera/model tidak tersedia.");
+            }
+            // Animate loop akan tetap berjalan
+            animate();
         }
 
         function update() {
-            // Update AR toolkit on every frame if source is ready
-            if (arToolkitSource && arToolkitSource.ready !== false) {
+            // update artoolkit on every frame
+            if (arToolkitSource.ready !== false) {
                 arToolkitContext.update(arToolkitSource.domElement);
             }
 
-            // Optional: Rotate your custom model for visual effect only if marker is visible
+            // Optional: Rotasi model kustom untuk efek visual jika marker terlihat
             if (customModel && markerRoot1.visible) {
-                customModel.rotation.y += 0.01;
+                 customModel.rotation.y += 0.01;
             }
         }
 
@@ -494,17 +446,26 @@
             requestAnimationFrame(animate);
             deltaTime = clock.getDelta();
             totalTime += deltaTime;
-            update(); 
-            render(); 
+            update();
+            render();
         }
 
-        // Add click handlers for buttons
+        // Add click handlers
         document.querySelector('.next-button').addEventListener('click', () => {
             alert('Navigasi ke halaman berikutnya - fitur demo');
         });
 
         document.querySelector('.back-arrow').addEventListener('click', () => {
             alert('Kembali ke halaman sebelumnya - fitur demo');
+        });
+
+        // Handle window resize for the camera container
+        window.addEventListener('resize', () => {
+            if (renderer && camera) {
+                // Ukuran container sekarang diatur oleh CSS padding-bottom
+                // Cukup panggil onResize AR.js
+                onResize(); 
+            }
         });
     </script>
 </body>
