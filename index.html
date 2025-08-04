@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Statis 3D AR - Karir</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        /* CSS seperti yang sudah dijelaskan sebelumnya, dengan sedikit peningkatan */
+        body {
+            margin: 0;
+            font-family: 'Roboto', sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Mengatur agar konten mulai dari atas */
+            min-height: 100vh;
+            padding-top: 20px; /* Sedikit padding atas */
+            box-sizing: border-box; /* Include padding in element's total width and height */
+            -webkit-user-select: none; /* Disable text selection on webkit browsers */
+            -moz-user-select: none; /* Disable text selection on Firefox */
+            -ms-user-select: none; /* Disable text selection on IE/Edge */
+            user-select: none; /* Standard syntax */
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 420px; /* Lebar maksimal mendekati mobile phone */
+            background-color: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            overflow: hidden; /* Penting untuk border-radius */
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            padding: 15px 20px;
+            background-color: #007bff; /* Warna biru untuk header */
+            color: white;
+            font-size: 1.1em;
+            font-weight: 500;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .header .back-arrow {
+            font-size: 28px;
+            margin-right: 15px;
+            cursor: pointer;
+        }
+
+        .camera-container {
+            position: relative;
+            width: calc(100% - 40px); /* Kurangi padding samping */
+            height: 300px; /* Tinggi kotak hitam */
+            background-color: black;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 20px 0 20px; /* Atur margin */
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5); /* Efek inset shadow */
+        }
+
+        .camera-container video,
+        .camera-container canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Pastikan video/canvas mengisi area */
+            transform: scaleX(-1); /* Membalik horizontal untuk selfie-like experience, hapus jika tidak diperlukan */
+        }
+
+        .info-card {
+            background-color: white;
+            padding: 20px;
+            width: calc(100% - 40px);
+            margin: 20px 20px 0 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            border: 1px solid #eee;
+        }
+        .info-card h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 1.2em;
+            font-weight: 700;
+        }
+        .info-card .profession {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            color: #555;
+            font-size: 0.95em;
+        }
+        .info-card .profession svg {
+            margin-right: 10px;
+            color: #007bff;
+            min-width: 24px; /* Fix width for icon */
+            min-height: 24px;
+        }
+        .info-card p {
+            color: #666;
+            line-height: 1.6;
+            font-size: 0.9em;
+            margin-bottom: 0;
+        }
+
+        .next-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1em;
+            margin: 20px;
+            width: calc(100% - 40px); /* Sesuaikan lebar */
+            box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3);
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+        .next-button:hover {
+            background-color: #0056b3;
+            transform: translateY(-2px);
+        }
+        .next-button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 5px rgba(0, 123, 255, 0.3);
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 600px) {
+            .container {
+                width: 100%;
+                max-width: none;
+                border-radius: 0;
+                box-shadow: none;
+            }
+            body {
+                padding-top: 0;
+            }
+            .header {
+                border-radius: 0;
+            }
+            .camera-container, .info-card, .next-button {
+                width: calc(100% - 40px); /* Pastikan konsisten */
+                margin-left: 20px;
+                margin-right: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <span class="back-arrow">&larr;</span>
+            <h2>Karir</h2>
+        </div>
+
+        <div class="camera-container">
+            <video id="cameraFeed" autoplay playsinline></video>
+            <canvas id="threeDCanvas"></canvas>
+            <div id="loadingMessage" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 5px; display: none;">
+                Loading 3D model...
+            </div>
+        </div>
+
+        <div class="info-card">
+            <h3>S1 Kedokteran</h3>
+            <div class="profession">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-medical">
+                    <path d="M12 2L12 22"></path>
+                    <path d="M5 9L19 9"></path>
+                    <path d="M5 15L19 15"></path>
+                </svg>
+                <span>Dokter</span>
+            </div>
+            <p>Seorang dokter bertanggung jawab menegakkan diagnosis dan merawat pasien dengan memberikan pelayanan medis, melakukan pemeriksaan, meresepkan obat, dan melakukan tindakan medis yang diperlukan.</p>
+        </div>
+
+        <button class="next-button">BERIKUTNYA</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.min.js",
+                "three/addons/": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        const cameraFeed = document.getElementById('cameraFeed');
+        const threeDCanvas = document.getElementById('threeDCanvas');
+        const cameraContainer = document.querySelector('.camera-container');
+        const loadingMessage = document.getElementById('loadingMessage');
+
+        // --- Three.js Variables ---
+        let scene, camera, renderer;
+        let medicalModel; // Untuk menyimpan objek 3D medical
+
+        // Function to initialize Three.js scene
+        function initThreeJS() {
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = null; // Set background to null for transparency
+
+            // Camera (Three.js camera, not the device camera)
+            camera = new THREE.PerspectiveCamera(50, cameraContainer.clientWidth / cameraContainer.clientHeight, 0.1, 100);
+            camera.position.set(0, 1.5, 5);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ canvas: threeDCanvas, alpha: true, antialias: true });
+            renderer.setSize(cameraContainer.clientWidth, cameraContainer.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(0, 10, 5);
+            directionalLight.target.position.set(0, 0, 0);
+            scene.add(directionalLight);
+            scene.add(directionalLight.target);
+
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+            fillLight.position.set(0, -5, 5);
+            scene.add(fillLight);
+
+            // Create medical-themed 3D objects as placeholder
+            createMedicalObjects();
+        }
+
+        function createMedicalObjects() {
+            loadingMessage.style.display = 'block';
+            
+            // Create a simple medical cross
+            const crossGroup = new THREE.Group();
+            
+            // Vertical bar of cross
+            const verticalGeometry = new THREE.BoxGeometry(0.3, 2, 0.3);
+            const crossMaterial = new THREE.MeshLambertMaterial({ color: 0xff4444 });
+            const verticalBar = new THREE.Mesh(verticalGeometry, crossMaterial);
+            crossGroup.add(verticalBar);
+            
+            // Horizontal bar of cross
+            const horizontalGeometry = new THREE.BoxGeometry(1.5, 0.3, 0.3);
+            const horizontalBar = new THREE.Mesh(horizontalGeometry, crossMaterial);
+            crossGroup.add(horizontalBar);
+            
+            // Add a simple capsule/pill shape
+            const pillGeometry = new THREE.CapsuleGeometry ? 
+                new THREE.CapsuleGeometry(0.2, 1, 4, 8) : 
+                new THREE.CylinderGeometry(0.2, 0.2, 1, 8);
+            const pillMaterial = new THREE.MeshLambertMaterial({ color: 0x00aa44 });
+            const pill = new THREE.Mesh(pillGeometry, pillMaterial);
+            pill.position.set(2, 0, 0);
+            pill.rotation.z = Math.PI / 4;
+            
+            // Add a stethoscope-like ring
+            const ringGeometry = new THREE.TorusGeometry(0.5, 0.1, 8, 16);
+            const ringMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+            ring.position.set(-2, 0, 0);
+            ring.rotation.x = Math.PI / 2;
+            
+            medicalModel = new THREE.Group();
+            medicalModel.add(crossGroup);
+            medicalModel.add(pill);
+            medicalModel.add(ring);
+            
+            medicalModel.position.set(0, -0.5, 0);
+            medicalModel.scale.set(0.8, 0.8, 0.8);
+            
+            scene.add(medicalModel);
+            
+            loadingMessage.style.display = 'none';
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Gentle rotation for medical objects
+            if (medicalModel) {
+                medicalModel.rotation.y += 0.01;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // --- Akses Kamera ---
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment'
+                    }
+                });
+                cameraFeed.srcObject = stream;
+                cameraFeed.onloadedmetadata = () => {
+                    cameraFeed.play();
+                    initThreeJS();
+                    animate();
+                };
+            } catch (err) {
+                console.error("Error accessing camera: ", err);
+                // Fallback untuk demo - tampilkan placeholder
+                cameraFeed.style.display = 'none';
+                cameraContainer.style.background = 'linear-gradient(45deg, #667eea 0%, #764ba2 100%)';
+                cameraContainer.innerHTML = '<div style="color: white; text-align: center; padding: 20px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 14px;">Demo Mode - AR Camera View<br><small>Kamera tidak tersedia dalam preview</small></div>';
+                
+                // Still initialize 3D scene for demo
+                setTimeout(() => {
+                    initThreeJS();
+                    animate();
+                }, 1000);
+            }
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (renderer && camera) {
+                const width = cameraContainer.clientWidth;
+                const height = cameraContainer.clientHeight;
+                renderer.setSize(width, height);
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+            }
+        });
+
+        // Setup when DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            setupCamera();
+        });
+
+        // Add click handler for next button
+        document.querySelector('.next-button').addEventListener('click', () => {
+            alert('Navigasi ke halaman berikutnya - fitur demo');
+        });
+
+        // Add click handler for back arrow
+        document.querySelector('.back-arrow').addEventListener('click', () => {
+            alert('Kembali ke halaman sebelumnya - fitur demo');
+        });
+    </script>
+</body>
+</html>
